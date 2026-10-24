@@ -41,7 +41,6 @@
             <Expander Header="Drop selected stash">
                 <StackPanel Margin="8" Spacing="8">
                     <TextBlock Text="Dropping permanently removes the saved stash without applying it." Classes="muted" />
-                    <TextBox Text="{Binding StashDropConfirmation}" Watermark="Type stash@{index} for the selected entry" />
 
                     <Button Classes="workspace"
                             Content="Drop selected stash"

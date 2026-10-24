@@ -57,9 +57,6 @@ public partial class MainWindowViewModel
     private string worktreeBranch = "";
 
     [ObservableProperty]
-    private string worktreeRemoveConfirmation = "";
-
-    [ObservableProperty]
     private GitWorktreeInfo? selectedWorktree;
 
     [ObservableProperty]
@@ -163,9 +160,6 @@ public partial class MainWindowViewModel
 
     [ObservableProperty]
     private string pullRequestBase = "main";
-
-    [ObservableProperty]
-    private string mergePullRequestConfirmation = "";
 
     [ObservableProperty]
     private string hostingDetails = "Select a pull request or issue.";
@@ -540,7 +534,11 @@ public partial class MainWindowViewModel
             return;
         }
 
-        var confirmation = WorktreeRemoveConfirmation;
+        if (!await ConfirmActionAsync("Remove worktree?",
+            $"Remove worktree {selected.Name}? Its folder will be preserved in a backup location. The main worktree and locked worktrees cannot be removed.",
+            "Remove worktree", () => SelectedWorktree == selected))
+            return;
+        var confirmation = selected.Name;
         var backup = "";
         await RunFeatureMutationAsync(
             async path => backup = await _worktrees.RemoveAsync(path, selected.Name, confirmation),
@@ -548,7 +546,6 @@ public partial class MainWindowViewModel
         );
         if (backup.Length > 0)
         {
-            WorktreeRemoveConfirmation = "";
             Status = $"Worktree removed. Folder preserved at {backup}";
         }
     }

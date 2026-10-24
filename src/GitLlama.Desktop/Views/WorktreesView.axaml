@@ -54,8 +54,6 @@
                                    TextWrapping="Wrap"
                                    Classes="muted" />
 
-                        <TextBox Text="{Binding WorktreeRemoveConfirmation}" Watermark="Type the selected worktree name" />
-
                         <Button Classes="workspace"
                                 Content="Remove worktree and preserve folder"
                                 Command="{Binding RemoveWorktreeCommand}" />

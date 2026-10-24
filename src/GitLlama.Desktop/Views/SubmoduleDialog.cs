@@ -76,13 +76,10 @@ public static class SubmoduleDialog
             {
                 Text =
                     $"Remove the submodule at {module.Path} from this repository: its folder, its .gitmodules entry and its configuration. "
-                    + "Its cloned history is kept in .git/modules, and the change is staged for you to commit. "
-                    + $"Type {module.DisplayName} to confirm.",
+                    + "Its cloned history is kept in .git/modules, and the change is staged for you to commit.",
                 TextWrapping = TextWrapping.Wrap,
             }
         );
-        var confirm = new TextBox { Name = "SubmoduleRemoveInput", Watermark = "Type " + module.DisplayName };
-        fields.Children.Add(confirm);
         await RemoteEditDialog.SubmitAsync(
             dialog,
             owner,
@@ -90,14 +87,10 @@ public static class SubmoduleDialog
             "Remove submodule",
             async () =>
             {
-                if (confirm.Text?.Trim() != module.DisplayName)
-                {
-                    return "Type " + module.DisplayName + " to confirm removal.";
-                }
-
                 await vm.RemoveSubmoduleCommand.ExecuteAsync(module);
                 return vm.SubmoduleEditSucceeded ? null : vm.SubmoduleEditFeedback;
-            }
+            },
+            destructive: true
         );
     }
 }

@@ -54,7 +54,7 @@ public static class RemoteEditDialog
             new TextBlock
             {
                 Text = remove
-                    ? "Remove this remote configuration and its remote-tracking references from this repository. The remote server and its repositories will remain available. Type the remote name to confirm."
+                    ? $"Remove remote {snapshot.Name} and its remote-tracking references from this repository? The remote server and its repositories will remain available."
                     : "Configure the repository's remote connection.",
                 TextWrapping = TextWrapping.Wrap,
             }
@@ -64,9 +64,10 @@ public static class RemoteEditDialog
             Name = "RemoteNameInput",
             Text = remove ? "" : snapshot.Name,
             IsReadOnly = remote is not null && !remove,
-            Watermark = remove ? "Type " + snapshot.Name : "Remote name (for example origin)",
+            Watermark = "Remote name (for example origin)",
+            IsVisible = !remove,
         };
-        fields.Children.Add(new TextBlock { Text = remove ? "Confirm remote name" : "Remote name" });
+        fields.Children.Add(new TextBlock { Text = "Remote name", IsVisible = !remove });
         fields.Children.Add(name);
         var url = new TextBox
         {
@@ -95,11 +96,6 @@ public static class RemoteEditDialog
             remove ? "Remove remote" : "Save remote",
             async () =>
             {
-                if (remove && name.Text?.Trim() != snapshot.Name)
-                {
-                    return "Type " + snapshot.Name + " to confirm removal.";
-                }
-
                 if (!remove && (string.IsNullOrWhiteSpace(name.Text) || string.IsNullOrWhiteSpace(url.Text)))
                 {
                     return "Enter a remote name and repository URL.";
@@ -115,7 +111,8 @@ public static class RemoteEditDialog
                     }
                 );
                 return vm.RemoteEditSucceeded ? null : vm.RemoteOperationFeedback;
-            }
+            },
+            destructive: remove
         );
     }
 
@@ -152,7 +149,7 @@ public static class RemoteEditDialog
                     RemoteBranchOperation.Rename =>
                         $"Rename {draft.SourceName} on the server. Local branch names stay the same; their tracking configuration follows the renamed remote branch.",
                     _ =>
-                        $"Delete {draft.SourceName} on the server. Local branches stay available. Type {draft.BranchName} to confirm.",
+                        $"Delete {draft.SourceName} on the server? Local branches stay available.",
                 },
                 TextWrapping = TextWrapping.Wrap,
             }
@@ -161,7 +158,8 @@ public static class RemoteEditDialog
         {
             Name = "RemoteBranchNameInput",
             Text = operation == RemoteBranchOperation.Rename ? draft.BranchName : "",
-            Watermark = operation == RemoteBranchOperation.Delete ? "Type " + draft.BranchName : "Branch name",
+            Watermark = "Branch name",
+            IsVisible = operation != RemoteBranchOperation.Delete,
         };
         fields.Children.Add(input);
         await SubmitAsync(
@@ -171,21 +169,18 @@ public static class RemoteEditDialog
             operation == RemoteBranchOperation.Delete ? "Delete branch" : "Save branch",
             async () =>
             {
-                if (string.IsNullOrWhiteSpace(input.Text))
+                if (operation != RemoteBranchOperation.Delete && string.IsNullOrWhiteSpace(input.Text))
                 {
                     return "Enter a branch name.";
                 }
 
-                if (operation == RemoteBranchOperation.Delete && input.Text.Trim() != draft.BranchName)
-                {
-                    return "Type " + draft.BranchName + " to confirm deletion.";
-                }
-
                 await vm.ChangeRemoteBranchCommand.ExecuteAsync(
-                    new RemoteBranchEditRequest(draft, version, operation, input.Text.Trim())
+                    new RemoteBranchEditRequest(draft, version, operation,
+                        operation == RemoteBranchOperation.Delete ? draft.BranchName! : input.Text!.Trim())
                 );
                 return vm.RemoteEditSucceeded ? null : vm.RemoteOperationFeedback;
-            }
+            },
+            destructive: operation == RemoteBranchOperation.Delete
         );
     }
 
@@ -194,7 +189,8 @@ public static class RemoteEditDialog
         Window owner,
         StackPanel fields,
         string action,
-        Func<Task<string?>> submit
+        Func<Task<string?>> submit,
+        bool destructive = false
     )
     {
         var feedback = new TextBlock { Name = "RemoteEditFeedback", TextWrapping = TextWrapping.Wrap };
@@ -204,8 +200,14 @@ public static class RemoteEditDialog
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
         };
-        var cancel = new Button { Content = "Cancel" };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
         var save = new Button { Content = action, Classes = { "workspace", "primary" } };
+        if (destructive)
+        {
+            save.Background = new SolidColorBrush(Color.Parse("#91434D"));
+            save.Foreground = Brushes.White;
+            dialog.Opened += (_, _) => cancel.Focus();
+        }
         var busy = false;
         cancel.Click += (_, _) => dialog.Close();
         save.Click += async (_, _) =>

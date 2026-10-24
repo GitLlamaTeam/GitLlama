@@ -1239,7 +1239,7 @@ public sealed class WorkspaceTests
         vm.SelectedPullRequest = vm.PullRequests.First();
         await vm.MergePullRequestCommand.ExecuteAsync(null);
         Assert.Null(provider.MergedSha);
-        vm.MergePullRequestConfirmation = "MERGE #42";
+        vm.RequestConfirmation = _ => Task.FromResult(true);
         await vm.MergePullRequestCommand.ExecuteAsync(null);
         Assert.Equal("reviewed-sha", provider.MergedSha);
         await vm.RefreshIssuesCommand.ExecuteAsync(null);
@@ -3273,19 +3273,18 @@ public sealed class WorkspaceTests
             var remove = RemoteEditDialog.ConnectionAsync(window, vm, vm.SelectedRemote, remove: true);
             await WaitUntilAsync(() => window.OwnedWindows.Any());
             dialog = window.OwnedWindows.Single();
-            var confirmation = dialog
-                .GetVisualDescendants()
-                .OfType<TextBox>()
-                .Single(input => input.Name == "RemoteNameInput");
-            var button = dialog
-                .GetVisualDescendants()
-                .OfType<Button>()
-                .Single(item => Equals(item.Content, "Remove remote"));
-            button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            Dispatcher.UIThread.RunJobs();
-            Assert.True(dialog.IsVisible);
+            Assert.DoesNotContain(dialog.GetVisualDescendants().OfType<TextBox>(), input => input.IsVisible);
+            dialog.GetVisualDescendants().OfType<Button>()
+                .Single(item => Equals(item.Content, "Cancel"))
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await remove;
             Assert.Single(vm.Remotes);
-            confirmation.Text = "origin";
+            remove = RemoteEditDialog.ConnectionAsync(window, vm, vm.SelectedRemote, remove: true);
+            await WaitUntilAsync(() => window.OwnedWindows.Any());
+            dialog = window.OwnedWindows.Single();
+            var button = dialog.GetVisualDescendants().OfType<Button>()
+                .Single(item => Equals(item.Content, "Remove remote"));
+            Assert.False(button.IsDefault);
             button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => !dialog.IsVisible);
             await remove;
@@ -3295,6 +3294,82 @@ public sealed class WorkspaceTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public async Task TagDeletionWarningCancelsOnDismissAndDeletesOnlyOnApproval()
+    {
+        using var fixture = new WorkspaceFixture();
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        vm.SelectedTag = vm.Tags.Single(tag => tag.Name == "v0.3.0");
+        var window = new MainWindow(fixture.SettingsPath) { DataContext = vm };
+        window.Show();
+        try
+        {
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                var deletion = vm.DeleteSelectedTagCommand.ExecuteAsync(null);
+                await WaitUntilAsync(() => window.OwnedWindows.Any());
+                var dialog = window.OwnedWindows.Single();
+                Assert.Empty(dialog.GetVisualDescendants().OfType<TextBox>());
+                Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(),
+                    text => text.Text?.Contains("v0.3.0") == true);
+                var approve = dialog.GetVisualDescendants().OfType<Button>()
+                    .Single(button => Equals(button.Content, "Delete tag"));
+                Assert.False(approve.IsDefault);
+                if (attempt == 0) SavePreview(dialog, "delete-tag-warning.png");
+                if (attempt == 1)
+                    dialog.Close();
+                else
+                    (attempt == 2 ? approve : dialog.GetVisualDescendants().OfType<Button>()
+                        .Single(button => Equals(button.Content, "Cancel")))
+                        .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                await deletion;
+                using var repo = new Repository(fixture.RepositoryPath);
+                Assert.Equal(attempt < 2, repo.Tags["v0.3.0"] is not null);
+            }
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public async Task WarningApprovalIsBoundToItsTargetAndResetCancellationPreservesHistory()
+    {
+        using var fixture = new WorkspaceFixture();
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        vm.SelectedTag = vm.Tags.Single();
+        // An absent dialog host fails closed.
+        await vm.DeleteSelectedTagCommand.ExecuteAsync(null);
+        using (var repo = new Repository(fixture.RepositoryPath)) Assert.NotNull(repo.Tags["v0.3.0"]);
+        var reply = new TaskCompletionSource<bool>();
+        vm.RequestConfirmation = request =>
+        {
+            Assert.Contains("v0.3.0", request.Message);
+            return reply.Task;
+        };
+        var deletion = vm.DeleteSelectedTagCommand.ExecuteAsync(null);
+        vm.SelectedTag = null;
+        reply.SetResult(true);
+        await deletion;
+        using (var repo = new Repository(fixture.RepositoryPath)) Assert.NotNull(repo.Tags["v0.3.0"]);
+
+        vm.SelectedHistoryRow = vm.HistoryRows.Last();
+        string original;
+        using (var repo = new Repository(fixture.RepositoryPath)) original = repo.Head.Tip.Sha;
+        var warnings = new List<ActionConfirmation>();
+        vm.RequestConfirmation = request => { warnings.Add(request); return Task.FromResult(false); };
+        await vm.SoftResetToSelectedCommitCommand.ExecuteAsync(null);
+        await vm.MixedResetToSelectedCommitCommand.ExecuteAsync(null);
+        await vm.HardResetToSelectedCommitCommand.ExecuteAsync(null);
+        vm.RebaseTargetBranch = "feature/authentication";
+        await vm.RebaseCurrentOntoTargetCommand.ExecuteAsync(null);
+        await vm.ExecuteEditableRebasePlanCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "Soft reset", "Mixed reset", "Hard reset", "Rebase", "Execute rebase" },
+            warnings.Select(warning => warning.Action));
+        using (var repo = new Repository(fixture.RepositoryPath)) Assert.Equal(original, repo.Head.Tip.Sha);
+        Assert.Contains("Validate login input", File.ReadAllText(Path.Combine(fixture.RepositoryPath, "src/Auth.cs")));
     }
 
     [Theory]

@@ -139,8 +139,6 @@
                                  AcceptsReturn="True"
                                  MinHeight="90" />
 
-                        <TextBox Text="{Binding RebaseConfirmation}" Watermark="Type REBASE to confirm rewriting local commits" />
-
                         <Button Classes="workspace"
                                 Content="Rebase current branch onto target"
                                 Command="{Binding RebaseCurrentOntoTargetCommand}" />

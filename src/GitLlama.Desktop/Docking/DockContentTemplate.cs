@@ -551,16 +551,10 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                     new TextBlock
                     {
                         Text =
-                            "Soft reset to a selected ancestor: moves local HEAD, preserves staged changes and working files. Published HEAD commits are blocked. Type RESET followed by the selected 7-character SHA to confirm.",
+                            "Soft reset to a selected ancestor: moves local HEAD, preserves staged changes and working files. Published HEAD commits are blocked.",
                         TextWrapping = TextWrapping.Wrap,
                     }
                 );
-                var softResetConfirmation = new TextBox { Watermark = "RESET abc1234" };
-                softResetConfirmation.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.SoftResetConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(softResetConfirmation);
                 var softReset = new Button { Content = "Soft reset to selected ancestor" };
                 softReset.Bind(Button.CommandProperty, new Binding(nameof(workspace.SoftResetToSelectedCommitCommand)));
                 root.Children.Add(softReset);
@@ -568,16 +562,10 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                     new TextBlock
                     {
                         Text =
-                            "Mixed reset to a selected ancestor: moves local HEAD and unstages changes, but preserves working files. Published HEAD commits are blocked. Type MIXED followed by the selected 7-character SHA to confirm.",
+                            "Mixed reset to a selected ancestor: moves local HEAD and unstages changes, but preserves working files. Published HEAD commits are blocked.",
                         TextWrapping = TextWrapping.Wrap,
                     }
                 );
-                var mixedResetConfirmation = new TextBox { Watermark = "MIXED abc1234" };
-                mixedResetConfirmation.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.MixedResetConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(mixedResetConfirmation);
                 var mixedReset = new Button { Content = "Mixed reset to selected ancestor" };
                 mixedReset.Bind(
                     Button.CommandProperty,
@@ -588,16 +576,10 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                     new TextBlock
                     {
                         Text =
-                            "DANGER — hard reset moves HEAD and replaces tracked working files and index with the selected ancestor. Later local commits become unreachable from this branch. Requires a clean tree; published HEAD is blocked. Type HARD RESET plus the selected 7-character SHA.",
+                            "DANGER — hard reset moves HEAD and replaces tracked working files and index with the selected ancestor. Later local commits become unreachable from this branch. Requires a clean tree; published HEAD is blocked.",
                         TextWrapping = TextWrapping.Wrap,
                     }
                 );
-                var hardResetConfirmation = new TextBox { Watermark = "HARD RESET abc1234" };
-                hardResetConfirmation.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.HardResetConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(hardResetConfirmation);
                 var hardReset = new Button { Content = "Hard reset to selected ancestor (destructive)" };
                 hardReset.Bind(Button.CommandProperty, new Binding(nameof(workspace.HardResetToSelectedCommitCommand)));
                 root.Children.Add(hardReset);
@@ -680,16 +662,10 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                 root.Children.Add(
                     new TextBlock
                     {
-                        Text = "Delete remote tag only: type remote/tag exactly to confirm. Local tag is preserved.",
+                        Text = "Delete the selected tag from the selected remote after confirmation. The local tag is preserved.",
                         TextWrapping = TextWrapping.Wrap,
                     }
                 );
-                var confirmRemoteTag = new TextBox { Watermark = "remote/tag (e.g. origin/v1.0.0)" };
-                confirmRemoteTag.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.RemoteTagDeletionConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(confirmRemoteTag);
                 var deleteRemoteTag = new Button { Content = "Delete selected tag from remote" };
                 deleteRemoteTag.Bind(
                     Button.CommandProperty,
@@ -700,16 +676,10 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                     new TextBlock
                     {
                         Text =
-                            "Delete local tag: select a tag and type its exact name to confirm. Remote tags are unaffected.",
+                            "Delete local tag: select a tag. Remote tags are unaffected.",
                         TextWrapping = TextWrapping.Wrap,
                     }
                 );
-                var confirmTagDeletion = new TextBox { Watermark = "Exact tag name to confirm deletion" };
-                confirmTagDeletion.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.TagDeletionConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(confirmTagDeletion);
                 var deleteTag = new Button { Content = "Delete selected local tag" };
                 deleteTag.Bind(Button.CommandProperty, new Binding(nameof(workspace.DeleteSelectedTagCommand)));
                 root.Children.Add(deleteTag);
@@ -768,16 +738,10 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                     new TextBlock
                     {
                         Text =
-                            "Permanently drop a stash without applying it. Select an entry and type stash@{index} to confirm.",
+                            "Permanently drop a stash without applying it. Select an entry.",
                         TextWrapping = TextWrapping.Wrap,
                     }
                 );
-                var confirmStashDrop = new TextBox { Watermark = "Type stash@{0} for selected stash" };
-                confirmStashDrop.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.StashDropConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(confirmStashDrop);
                 var dropStash = new Button { Content = "Permanently drop selected stash" };
                 dropStash.Bind(Button.CommandProperty, new Binding(nameof(workspace.DropSelectedStashCommand)));
                 root.Children.Add(dropStash);
@@ -859,12 +823,6 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                         TextWrapping = TextWrapping.Wrap,
                     }
                 );
-                var discardConfirmation = new TextBox { Watermark = "Type DISCARD to confirm" };
-                discardConfirmation.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.DiscardConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(discardConfirmation);
                 var discard = new Button { Content = "Discard unstaged changes in selected file" };
                 discard.Bind(Button.CommandProperty, new Binding(nameof(workspace.DiscardSelectedUnstagedCommand)));
                 root.Children.Add(discard);
@@ -1046,12 +1004,6 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                     new Binding(nameof(workspace.RebaseTargetBranch)) { Mode = BindingMode.TwoWay }
                 );
                 root.Children.Add(rebaseTarget);
-                var rebaseConfirm = new TextBox { Watermark = "Type REBASE to confirm" };
-                rebaseConfirm.Bind(
-                    TextBox.TextProperty,
-                    new Binding(nameof(workspace.RebaseConfirmation)) { Mode = BindingMode.TwoWay }
-                );
-                root.Children.Add(rebaseConfirm);
                 var rebaseAction = new Button { Content = "Rebase current branch onto target" };
                 rebaseAction.Bind(
                     Button.CommandProperty,

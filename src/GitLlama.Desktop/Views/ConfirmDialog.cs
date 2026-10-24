@@ -37,6 +37,11 @@ public static class ConfirmDialog
             IsDefault = !destructive,
         };
         var confirmed = false;
+        if (destructive)
+        {
+            yes.Background = new SolidColorBrush(Color.Parse("#91434D"));
+            yes.Foreground = Brushes.White;
+        }
         no.Click += (_, _) => dialog.Close();
         yes.Click += (_, _) =>
         {

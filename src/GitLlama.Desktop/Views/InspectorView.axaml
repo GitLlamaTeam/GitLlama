@@ -307,7 +307,6 @@
                                                        VerticalAlignment="Center"
                                                        ToolTip.Tip="{Binding Path}" />
 
-
                                             <StackPanel Grid.Column="4"
                                                         Orientation="Horizontal"
                                                         Spacing="4">
@@ -386,7 +385,6 @@
                                                        VerticalAlignment="Center"
                                                        ToolTip.Tip="{Binding Path}" />
 
-
                                             <StackPanel Grid.Column="4"
                                                         Orientation="Horizontal"
                                                         Spacing="4">
@@ -434,8 +432,6 @@
                                 <TextBlock Text="Discard restores staged content and loses unstaged edits."
                                            Classes="muted"
                                            TextWrapping="Wrap" />
-
-                                <TextBox Text="{Binding DiscardConfirmation}" Watermark="Type DISCARD to confirm" />
 
                                 <Button Classes="workspace"
                                         Content="Discard unstaged edits"

@@ -53,13 +53,10 @@
 
                 <Expander Header="Delete a tag">
                     <StackPanel Margin="8" Spacing="8">
-                        <TextBox Text="{Binding TagDeletionConfirmation}" Watermark="Type the tag name for local deletion" />
 
                         <Button Classes="workspace"
                                 Content="Delete local tag"
                                 Command="{Binding DeleteSelectedTagCommand}" />
-
-                        <TextBox Text="{Binding RemoteTagDeletionConfirmation}" Watermark="Type the remote/tag confirmation" />
 
                         <Button Classes="workspace"
                                 Content="Delete selected remote tag"

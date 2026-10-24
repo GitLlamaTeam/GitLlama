@@ -78,7 +78,6 @@ public partial class MainWindowViewModel
             $"{repository.Owner}/{repository.Name} · #{item.Number} {item.Title}\n{item.State} · {item.Author}\n{item.HeadBranch}{(item.IsPullRequest ? " → " + item.BaseBranch : "")}\n\n{item.Body}";
         HostingComments.Clear();
         HostingComment = "";
-        MergePullRequestConfirmation = "";
         try
         {
             var comments = await _hostingProvider.CommentsAsync(repository, item.Number, token);
@@ -265,24 +264,24 @@ public partial class MainWindowViewModel
     }
 
     [RelayCommand]
-    private Task MergePullRequestAsync()
+    private async Task MergePullRequestAsync()
     {
         var item = SelectedPullRequest;
         if (item is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        if (MergePullRequestConfirmation != $"MERGE #{item.Number}")
-        {
-            HostingStatus = $"Type MERGE #{item.Number} to merge the selected pull request.";
-            return Task.CompletedTask;
-        }
+        var target = HostingTarget(item);
+        if (!await ConfirmActionAsync("Merge pull request on server?",
+            $"Merge {target.Owner}/{target.Name} PR #{item.Number}: {item.Title}? This merges {item.HeadBranch} into {item.BaseBranch} on the server.",
+            "Merge pull request", () => SelectedPullRequest == item && HostingTarget(item) == target))
+            return;
 
-        return RunHostingChangeAsync(
+        await RunHostingChangeAsync(
             (repo, token) => _hostingProvider.MergeAsync(repo, item.Number, item.HeadSha, token),
             true,
-            "Pull request merged.", HostingTarget(item)
+            "Pull request merged.", target
         );
     }
 

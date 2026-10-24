@@ -35,9 +35,6 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private string discardConfirmation = "";
-
-    [ObservableProperty]
     private string selectedDiffHunk = "";
 
     [ObservableProperty]
@@ -62,6 +59,12 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        var target = RebaseTargetBranch;
+        var plan = EditableRebasePlan;
+        if (!await ConfirmActionAsync("Rewrite local history?",
+            $"Execute the edited rebase plan for {CurrentBranch} onto {target}? This rewrites local commits. Review the plan before continuing.",
+            "Execute rebase", () => RebaseTargetBranch == target && EditableRebasePlan == plan))
+            return;
         var version = Interlocked.Read(ref _repositorySelectionVersion);
         await _gitMutationLock.WaitAsync();
         try
@@ -71,12 +74,7 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            if (RebaseConfirmation != "REBASE")
-            {
-                throw new InvalidOperationException("Type REBASE to confirm.");
-            }
-
-            var lines = EditableRebasePlan.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            var lines = plan.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             var steps = new List<GitRebaseStep>();
             var messages = new Dictionary<string, string>(StringComparer.Ordinal);
             var edits = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
@@ -121,8 +119,8 @@ public partial class MainWindowViewModel : ObservableObject
                 }
             }
 
-            var sha = await _linearRebase.RebaseWithEditsAsync(repo.Path, RebaseTargetBranch, steps, messages, edits);
-            RebaseConfirmation = "";
+            var sha = await _linearRebase.RebaseWithEditsAsync(repo.Path, target, steps, messages, edits);
+
             await RefreshAsync();
             Status = $"Rebase complete: {sha[..7]}";
         }
@@ -140,9 +138,6 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string rebaseTargetBranch = "";
 
-    [ObservableProperty]
-    private string rebaseConfirmation = "";
-
     [RelayCommand]
     private async Task RebaseCurrentOntoTargetAsync()
     {
@@ -151,11 +146,11 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        if (!string.Equals(RebaseConfirmation, "REBASE", StringComparison.Ordinal))
-        {
-            Status = PresentError("Type REBASE to confirm rewriting local commit history.", "Action needs attention");
+        var target = RebaseTargetBranch;
+        if (!await ConfirmActionAsync("Rebase current branch?",
+            $"Rebase {CurrentBranch} onto {target}? This rewrites local commit history. A clean working tree is required; published commits are protected.",
+            "Rebase", () => RebaseTargetBranch == target))
             return;
-        }
 
         var version = Interlocked.Read(ref _repositorySelectionVersion);
         await _gitMutationLock.WaitAsync();
@@ -166,8 +161,8 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            var sha = await _linearRebase.RebaseOntoAsync(repo.Path, RebaseTargetBranch);
-            RebaseConfirmation = "";
+            var sha = await _linearRebase.RebaseOntoAsync(repo.Path, target);
+
             await RefreshAsync();
             Status = $"Rebased current branch onto {RebaseTargetBranch}: {sha[..7]}";
         }
@@ -507,15 +502,6 @@ public partial class MainWindowViewModel : ObservableObject
     private string branchFromCommitName = "";
 
     [ObservableProperty]
-    private string hardResetConfirmation = "";
-
-    [ObservableProperty]
-    private string mixedResetConfirmation = "";
-
-    [ObservableProperty]
-    private string softResetConfirmation = "";
-
-    [ObservableProperty]
     private string amendedCommitMessage = "";
     public ObservableCollection<GitStashInfo> Stashes { get; } = [];
 
@@ -525,8 +511,6 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private GitStashInfo? selectedStash;
 
-    [ObservableProperty]
-    private string stashDropConfirmation = "";
     public ObservableCollection<GitTagInfo> Tags { get; } = [];
 
     [ObservableProperty]
@@ -547,11 +531,6 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private GitTagInfo? selectedTag;
 
-    [ObservableProperty]
-    private string tagDeletionConfirmation = "";
-
-    [ObservableProperty]
-    private string remoteTagDeletionConfirmation = "";
     private readonly GitHistoryWorkspaceService _historyWorkspace = new();
     private readonly GitCommitFilePatchService _historyPatch = new();
     private readonly GitCommitFileContentService _historyContent = new();
@@ -1265,12 +1244,11 @@ public partial class MainWindowViewModel : ObservableObject
         Tags.Clear();
         Stashes.Clear();
         SelectedStash = null;
-        StashDropConfirmation = "";
+
         _inspectedStashSha = null;
         UpdateStashTree();
         SelectedTag = null;
-        TagDeletionConfirmation = "";
-        RemoteTagDeletionConfirmation = "";
+
         SelectedRemote = null;
         StagingSummary = "No staged changes";
         ConfiguredIdentity = value is null ? "No repository selected" : "Loading Git identity...";
@@ -2336,10 +2314,12 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var expected = $"{remote.Name}/{tag.Name}";
-        if (!string.Equals(RemoteTagDeletionConfirmation.Trim(), expected, StringComparison.Ordinal))
+        if (!await ConfirmActionAsync(
+            "Delete remote tag?",
+            $"Delete tag {tag.Name} from {remote.Name} on the server? The local tag will be kept.",
+            "Delete remote tag",
+            () => SelectedRemote == remote && SelectedTag == tag))
         {
-            Status = PresentError($"Type {expected} to confirm remote tag deletion.", "Action needs attention");
             return;
         }
 
@@ -2359,7 +2339,6 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            RemoteTagDeletionConfirmation = "";
             Status = $"Deleted remote tag {tag.Name} from {remote.Name}; local tag preserved.";
         }
         catch (Exception e)
@@ -2388,9 +2367,12 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         var tagName = tag.Name;
-        if (!string.Equals(TagDeletionConfirmation.Trim(), tagName, StringComparison.Ordinal))
+        if (!await ConfirmActionAsync(
+            "Delete local tag?",
+            $"Delete local tag {tagName}? Remote tags will remain unchanged.",
+            "Delete tag",
+            () => SelectedTag == tag))
         {
-            Status = PresentError($"Type {tagName} to confirm local tag deletion.", "Action needs attention");
             return;
         }
 
@@ -2410,7 +2392,7 @@ public partial class MainWindowViewModel : ObservableObject
             }
 
             SelectedTag = null;
-            TagDeletionConfirmation = "";
+
             await RefreshAsync();
             Status = $"Deleted local tag {tagName}; remote tags were not changed.";
         }
@@ -2530,9 +2512,12 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         var expected = $"stash@{{{stash.Index}}}";
-        if (!string.Equals(StashDropConfirmation.Trim(), expected, StringComparison.Ordinal))
+        if (!await ConfirmActionAsync(
+            "Drop stash?",
+            $"Permanently delete {expected}: {stash.Message} without applying it? This cannot be undone.",
+            "Drop stash",
+            () => SelectedStash == stash))
         {
-            Status = PresentError($"Type {expected} to confirm permanent stash deletion.", "Action needs attention");
             return;
         }
 
@@ -2558,7 +2543,7 @@ public partial class MainWindowViewModel : ObservableObject
             }
 
             SelectedStash = null;
-            StashDropConfirmation = "";
+
             await RefreshAsync();
             Status = $"Dropped {expected} permanently without applying it.";
         }
@@ -2692,10 +2677,12 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var expected = $"HARD RESET {commit.Sha[..7]}";
-        if (!string.Equals(HardResetConfirmation.Trim(), expected, StringComparison.Ordinal))
+        if (!await ConfirmActionAsync(
+            "Hard reset branch?",
+            $"Move {CurrentBranch} back to {commit.Sha[..7]} and replace tracked files and the index with that commit? Later local commits will leave this branch. A clean working tree is required; published commits are protected.",
+            "Hard reset",
+            () => SelectedCommitLine == line))
         {
-            Status = PresentError($"Type {expected} to confirm discarding commits and resetting tracked files.", "Action needs attention");
             return;
         }
 
@@ -2714,7 +2701,6 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            HardResetConfirmation = "";
             await RefreshAsync();
             Status = $"Hard reset to {sha[..7]}; tracked files and index reset to target.";
         }
@@ -2745,10 +2731,12 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var expected = $"MIXED {commit.Sha[..7]}";
-        if (!string.Equals(MixedResetConfirmation.Trim(), expected, StringComparison.Ordinal))
+        if (!await ConfirmActionAsync(
+            "Mixed reset branch?",
+            $"Move {CurrentBranch} back to {commit.Sha[..7]} and unstage changes? Working files will be kept. Later commits will be removed from this branch; published commits are protected.",
+            "Mixed reset",
+            () => SelectedCommitLine == line))
         {
-            Status = PresentError($"Type {expected} to confirm moving HEAD and unstaging changes.", "Action needs attention");
             return;
         }
 
@@ -2767,7 +2755,6 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            MixedResetConfirmation = "";
             await RefreshAsync();
             Status = $"Mixed reset HEAD to {sha[..7]}; index reset, working files preserved.";
         }
@@ -2798,10 +2785,12 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var expected = $"RESET {commit.Sha[..7]}";
-        if (!string.Equals(SoftResetConfirmation.Trim(), expected, StringComparison.Ordinal))
+        if (!await ConfirmActionAsync(
+            "Soft reset branch?",
+            $"Move {CurrentBranch} back to {commit.Sha[..7]}? Staged changes and working files will be kept. Later commits will be removed from this branch; published commits are protected.",
+            "Soft reset",
+            () => SelectedCommitLine == line))
         {
-            Status = PresentError($"Type {expected} to confirm moving HEAD.", "Action needs attention");
             return;
         }
 
@@ -2820,7 +2809,6 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            SoftResetConfirmation = "";
             await RefreshAsync();
             Status = $"Soft reset HEAD to {sha[..7]}; index and working files preserved.";
         }
@@ -3889,7 +3877,10 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (SelectedChangeLine is { } selected && _changePaths.TryGetValue(selected, out var path))
         {
-            await DiscardUnstagedPathAsync(path, DiscardConfirmation);
+            if (await ConfirmActionAsync("Discard file changes?",
+                $"Discard unstaged edits in {path}? Staged changes will be kept. This cannot be undone.",
+                "Discard changes", () => SelectedChangeLine == selected))
+                await DiscardUnstagedPathAsync(path, "DISCARD");
         }
     }
 
@@ -3930,7 +3921,6 @@ public partial class MainWindowViewModel : ObservableObject
                 }
             }
 
-            DiscardConfirmation = "";
             if (version != Interlocked.Read(ref _repositorySelectionVersion) || SelectedRepository?.Path != repo.Path)
             {
                 return;

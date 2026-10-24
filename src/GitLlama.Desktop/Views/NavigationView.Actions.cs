@@ -510,28 +510,8 @@ public partial class NavigationView
             return;
         }
 
-        var dialog = RemoteEditDialog.Create("Drop stash", out var fields);
-        fields.Children.Add(
-            new TextBlock
-            {
-                Text = $"Permanently delete \"{node.Name}\" without applying it. This can't be undone.",
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-            }
-        );
-        await RemoteEditDialog.SubmitAsync(
-            dialog,
-            owner,
-            fields,
-            "Drop stash",
-            async () =>
-            {
-                vm.SelectedStash = stash;
-                var before = vm.Stashes.Count;
-                vm.StashDropConfirmation = node.Reference;
-                await vm.DropSelectedStashCommand.ExecuteAsync(null);
-                return vm.Stashes.Count < before ? null : vm.Status;
-            }
-        );
+        vm.SelectedStash = stash;
+        await vm.DropSelectedStashCommand.ExecuteAsync(null);
     }
 
     internal ContextMenu BuildBranchMenu(string branch)
@@ -748,14 +728,7 @@ public partial class NavigationView
         delete.Click += async (_, _) =>
         {
             vm.SelectedTag = tag;
-            await PromptAction(
-                "Delete " + tag.Name,
-                "Remote tags remain unchanged. Type the tag name to confirm.",
-                "Delete",
-                tag.Name,
-                value => vm.TagDeletionConfirmation = value,
-                vm.DeleteSelectedTagCommand
-            );
+            await vm.DeleteSelectedTagCommand.ExecuteAsync(null);
         };
         var history = new MenuItem { Header = "Show tag history" };
         history.Click += (_, _) =>
@@ -785,7 +758,19 @@ public partial class NavigationView
         var repository = vm.SelectedRepository?.Path;
         var branch = vm.SelectedBranchLine;
         var tag = vm.SelectedTag;
-        var input = new TextBox { Watermark = expected.Length > 0 ? "Type " + expected : "Name" };
+        if (expected.Length > 0)
+        {
+            var current = vm.CurrentBranch;
+            if (await ConfirmDialog.ShowAsync(owner, title, description + " Delete " + expected + "?", action, destructive: true)
+                && vm.SelectedRepository?.Path == repository && vm.SelectedBranchLine == branch
+                && vm.SelectedTag == tag && vm.CurrentBranch == current)
+            {
+                setValue(expected);
+                await command.ExecuteAsync(null);
+            }
+            return;
+        }
+        var input = new TextBox { Watermark = "Name" };
         var button = new Button { Content = action, HorizontalAlignment = HorizontalAlignment.Right };
         button.Classes.Add("workspace");
         var dialog = new Window
@@ -817,9 +802,9 @@ public partial class NavigationView
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(input.Text) || (expected.Length > 0 && input.Text != expected))
+            if (string.IsNullOrWhiteSpace(input.Text))
             {
-                feedback.Text = expected.Length > 0 ? "Type " + expected + " to continue." : "Enter a name.";
+                feedback.Text = "Enter a name.";
                 return;
             }
 

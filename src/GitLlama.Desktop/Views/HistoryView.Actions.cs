@@ -61,7 +61,6 @@ public partial class HistoryView
                     "Create branch at " + selected.ShortSha,
                     "New branch name",
                     "Create branch",
-                    "",
                     value => vm.BranchFromCommitName = value,
                     vm.CreateBranchFromSelectedCommitCommand
                 )
@@ -73,7 +72,6 @@ public partial class HistoryView
                     "Tag " + selected.ShortSha,
                     "New lightweight tag name",
                     "Create tag",
-                    "",
                     value =>
                     {
                         vm.NewTagName = value;
@@ -100,42 +98,9 @@ public partial class HistoryView
                     vm.RevertSelectedCommitCommand
                 )
         );
-        Add(
-            "Reset branch (soft)…",
-            () =>
-                PromptAsync(
-                    "Soft reset to " + selected.ShortSha,
-                    "Move HEAD; keep staged and working changes.",
-                    "Reset",
-                    "RESET " + selected.ShortSha,
-                    value => vm.SoftResetConfirmation = value,
-                    vm.SoftResetToSelectedCommitCommand
-                )
-        );
-        Add(
-            "Reset branch (mixed)…",
-            () =>
-                PromptAsync(
-                    "Mixed reset to " + selected.ShortSha,
-                    "Move HEAD and reset the index; keep working files.",
-                    "Reset",
-                    "MIXED " + selected.ShortSha,
-                    value => vm.MixedResetConfirmation = value,
-                    vm.MixedResetToSelectedCommitCommand
-                )
-        );
-        Add(
-            "Reset branch (hard)…",
-            () =>
-                PromptAsync(
-                    "Hard reset to " + selected.ShortSha,
-                    "Move HEAD and overwrite tracked working files. Uncommitted tracked changes are lost.",
-                    "Reset",
-                    "HARD RESET " + selected.ShortSha,
-                    value => vm.HardResetConfirmation = value,
-                    vm.HardResetToSelectedCommitCommand
-                )
-        );
+        Add("Reset branch (soft)…", () => vm.SoftResetToSelectedCommitCommand.ExecuteAsync(null));
+        Add("Reset branch (mixed)…", () => vm.MixedResetToSelectedCommitCommand.ExecuteAsync(null));
+        Add("Reset branch (hard)…", () => vm.HardResetToSelectedCommitCommand.ExecuteAsync(null));
         list.ContextMenu = new ContextMenu { ItemsSource = items };
         list.ContextMenu.Open(list);
         e.Handled = true;
@@ -143,14 +108,20 @@ public partial class HistoryView
 
     private async Task ConfirmAsync(string title, string description, IAsyncRelayCommand command)
     {
-        await PromptAsync(title, description, "Continue", "CONFIRM", _ => { }, command);
+        if (TopLevel.GetTopLevel(this) is not Window owner || DataContext is not MainWindowViewModel vm)
+            return;
+        var sha = vm.SelectedHistoryRow?.Sha;
+        var repository = vm.SelectedRepository?.Path;
+        var branch = vm.CurrentBranch;
+        if (await ConfirmDialog.ShowAsync(owner, title, description, "Continue", destructive: true)
+            && vm.SelectedHistoryRow?.Sha == sha && vm.SelectedRepository?.Path == repository && vm.CurrentBranch == branch)
+            await command.ExecuteAsync(null);
     }
 
     private async Task PromptAsync(
         string title,
         string description,
         string action,
-        string expected,
         Action<string> setValue,
         IAsyncRelayCommand command
     )
@@ -162,7 +133,7 @@ public partial class HistoryView
 
         var sha = vm.SelectedHistoryRow?.Sha;
         var repository = vm.SelectedRepository?.Path;
-        var input = new TextBox { Watermark = expected.Length > 0 ? "Type " + expected : "Branch name" };
+        var input = new TextBox { Watermark = "Name" };
         var button = new Button { Content = action, HorizontalAlignment = HorizontalAlignment.Right };
         button.Classes.Add("workspace");
         var dialog = new Window
@@ -190,11 +161,6 @@ public partial class HistoryView
             {
                 vm.Status = "Repository or commit selection changed. Review the action again.";
                 dialog.Close();
-                return;
-            }
-
-            if (expected.Length > 0 && input.Text != expected)
-            {
                 return;
             }
 

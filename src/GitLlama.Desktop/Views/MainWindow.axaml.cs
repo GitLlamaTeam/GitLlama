@@ -61,6 +61,8 @@ public partial class MainWindow : Window
             vm.IsOpeningWindow = true;
             vm.DockDocument = ShowDocument;
             vm.ActivateTool = ActivateTool;
+            vm.RequestConfirmation = async request => await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                ConfirmDialog.ShowAsync(this, request.Title, request.Message, request.Action, destructive: true));
             vm.OpenIntegrationBrowser ??= LaunchIntegrationBrowserAsync;
             vm.SshSession.RequestPassphrase = async (request, ct) =>
                 await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
@@ -97,6 +99,7 @@ public partial class MainWindow : Window
             if (DataContext is MainWindowViewModel vm)
             {
                 vm.CancelNetworkCommand.Execute(null);
+                vm.RequestConfirmation = null;
                 vm.SshSession.Dispose();
             }
         };

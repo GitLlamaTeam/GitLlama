@@ -48,14 +48,12 @@ public static class LfsLockMenu
             new TextBlock
             {
                 Text = current.IsOurs
-                    ? $"Release your lock on {current.Path} even though it has uncommitted changes. Type {name} to confirm."
+                    ? $"Release your lock on {current.Path} even though it has uncommitted changes?"
                     : $"{current.Owner} holds the lock on {current.Path}. Releasing it lets anyone push changes to the file, "
-                        + $"which can overwrite their work. Type {name} to confirm.",
+                        + "which can overwrite their work. Continue?",
                 TextWrapping = TextWrapping.Wrap,
             }
         );
-        var confirm = new TextBox { Name = "ForceUnlockInput", Watermark = "Type " + name };
-        fields.Children.Add(confirm);
         await RemoteEditDialog.SubmitAsync(
             dialog,
             window,
@@ -63,14 +61,10 @@ public static class LfsLockMenu
             "Force unlock",
             async () =>
             {
-                if (confirm.Text?.Trim() != name)
-                {
-                    return "Type " + name + " to confirm.";
-                }
-
                 await vm.ForceUnlockLfsFileCommand.ExecuteAsync(current.Path);
                 return vm.LfsLockFor(current.Path) is null ? null : vm.Status;
-            }
+            },
+            destructive: true
         );
     }
 }

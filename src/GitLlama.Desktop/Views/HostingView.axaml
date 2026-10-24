@@ -106,8 +106,6 @@
                                        Classes="muted"
                                        TextWrapping="Wrap" />
 
-                            <TextBox Text="{Binding MergePullRequestConfirmation}" Watermark="Type MERGE #number" />
-
                             <Button Classes="workspace"
                                     Content="Merge on GitHub"
                                     Command="{Binding MergePullRequestCommand}" />

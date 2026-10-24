@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replace typed confirmation phrases with warning dialogs for resets, rebases, deletions, discarding file edits, LFS force unlocks, and pull request merges. Name the target and consequences, default destructive dialogs to Cancel, and reject confirmation if the repository or target changes.
+
 ## 0.3.2 - 2026-10-20
 
 - Place LFS badges after the file status label consistently in staged and unstaged change lists.

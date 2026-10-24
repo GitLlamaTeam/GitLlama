@@ -68,7 +68,6 @@ public partial class RemoteTreeView : UserControl
             "Checkout " + branch,
             "Name for the new local tracking branch",
             "Checkout",
-            "",
             value =>
             {
                 vm.ContextBranchReference = branch;
@@ -201,7 +200,6 @@ public partial class RemoteTreeView : UserControl
         string title,
         string description,
         string action,
-        string expected,
         Action<string> setValue,
         Func<Task> execute
     )
@@ -212,7 +210,7 @@ public partial class RemoteTreeView : UserControl
         }
 
         var path = vm.SelectedRepository?.Path;
-        var input = new TextBox { Watermark = expected.Length == 0 ? "Local branch name" : "Type " + expected };
+        var input = new TextBox { Watermark = "Local branch name" };
         var feedback = new TextBlock();
         var button = new Button { Content = action, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
         var dialog = new Window
@@ -243,9 +241,9 @@ public partial class RemoteTreeView : UserControl
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(input.Text) || (expected.Length > 0 && input.Text != expected))
+            if (string.IsNullOrWhiteSpace(input.Text))
             {
-                feedback.Text = "Enter " + (expected.Length > 0 ? expected : "a local branch name") + " to continue.";
+                feedback.Text = "Enter a local branch name.";
                 return;
             }
 
