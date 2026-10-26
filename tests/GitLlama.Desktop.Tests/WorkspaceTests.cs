@@ -189,6 +189,23 @@ public sealed class WorkspaceTests
         Assert.Contains("canceled", vm.AzureOAuthFeedback);
     }
 
+    private static Avalonia.Input.RawInputModifiers RawModifiers(Avalonia.Input.KeyModifiers modifiers)
+    {
+        var raw = Avalonia.Input.RawInputModifiers.None;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Control)) raw |= Avalonia.Input.RawInputModifiers.Control;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Meta)) raw |= Avalonia.Input.RawInputModifiers.Meta;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Shift)) raw |= Avalonia.Input.RawInputModifiers.Shift;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Alt)) raw |= Avalonia.Input.RawInputModifiers.Alt;
+        return raw;
+    }
+
+    private static void PressShortcut(Window window, Avalonia.Input.KeyGesture gesture, Avalonia.Input.PhysicalKey physicalKey)
+    {
+        var modifiers = RawModifiers(gesture.KeyModifiers);
+        window.KeyPressQwerty(physicalKey, modifiers);
+        window.KeyReleaseQwerty(physicalKey, modifiers);
+    }
+
     private static void ClickInspectorFile(Window window, ListBox list, int index, bool shift = false, bool control = false)
     {
         list.ScrollIntoView(list.Items[index]!);
@@ -196,7 +213,8 @@ public sealed class WorkspaceTests
         var row = list.ContainerFromIndex(index)!;
         var point = row.TranslatePoint(new Point(130, row.Bounds.Height / 2), window)!.Value;
         var modifiers = shift ? Avalonia.Input.RawInputModifiers.Shift
-            : control ? Avalonia.Input.RawInputModifiers.Control : Avalonia.Input.RawInputModifiers.None;
+            : control ? RawModifiers(Avalonia.Application.Current!.PlatformSettings!.HotkeyConfiguration.CommandModifiers)
+            : Avalonia.Input.RawInputModifiers.None;
         window.MouseDown(point, Avalonia.Input.MouseButton.Left, modifiers);
         window.MouseUp(point, Avalonia.Input.MouseButton.Left, modifiers);
         Dispatcher.UIThread.RunJobs();
@@ -2505,19 +2523,19 @@ public sealed class WorkspaceTests
             window.MouseMove(end, Avalonia.Input.RawInputModifiers.LeftMouseButton);
             window.MouseUp(end, Avalonia.Input.MouseButton.Left);
             Assert.Equal("old value\nnew value", editor.SelectedText);
-            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.C, Avalonia.Input.RawInputModifiers.Control);
-            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.C, Avalonia.Input.RawInputModifiers.Control);
+            var hotkeys = Avalonia.Application.Current!.PlatformSettings!.HotkeyConfiguration;
+            var copyGesture = hotkeys.Copy.First(gesture => gesture.Key == Avalonia.Input.Key.C);
+            PressShortcut(window, copyGesture, Avalonia.Input.PhysicalKey.C);
+            Assert.Equal(hotkeys.Copy.First(), editor.ContextMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Copy")).InputGesture);
             var clipboard = TopLevel.GetTopLevel(editor)!.Clipboard!;
             Assert.Equal("old value\nnew value", (await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clipboard))?.Replace("\r\n", "\n"));
             window.KeyTextInput("replaced");
             window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Delete, Avalonia.Input.RawInputModifiers.None);
             window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Delete, Avalonia.Input.RawInputModifiers.None);
-            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.V, Avalonia.Input.RawInputModifiers.Control);
-            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.V, Avalonia.Input.RawInputModifiers.Control);
+            PressShortcut(window, hotkeys.Paste.First(gesture => gesture.Key == Avalonia.Input.Key.V), Avalonia.Input.PhysicalKey.V);
             await Task.Yield();
             Assert.Equal(original, editor.Text);
-            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.A, Avalonia.Input.RawInputModifiers.Control);
-            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.A, Avalonia.Input.RawInputModifiers.Control);
+            PressShortcut(window, hotkeys.SelectAll.First(gesture => gesture.Key == Avalonia.Input.Key.A), Avalonia.Input.PhysicalKey.A);
             Assert.Equal(original, editor.SelectedText);
             if (diff)
             {

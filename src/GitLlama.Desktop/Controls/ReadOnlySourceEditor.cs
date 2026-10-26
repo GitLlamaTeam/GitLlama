@@ -26,7 +26,8 @@ internal static class ReadOnlySourceEditor
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Padding = new Thickness(8, 4),
         };
-        var copy = new MenuItem { Header = "Copy", InputGesture = new Avalonia.Input.KeyGesture(Avalonia.Input.Key.C, Avalonia.Input.KeyModifiers.Control) };
+        var hotkeys = Avalonia.Application.Current?.PlatformSettings?.HotkeyConfiguration;
+        var copy = new MenuItem { Header = "Copy", InputGesture = hotkeys?.Copy.FirstOrDefault() };
         copy.Click += async (_, _) =>
         {
             if (TopLevel.GetTopLevel(editor)?.Clipboard is { } clipboard && editor.SelectionLength > 0)
@@ -34,7 +35,7 @@ internal static class ReadOnlySourceEditor
         };
         editor.TextArea.SelectionChanged += (_, _) => copy.IsEnabled = editor.SelectionLength > 0;
         copy.IsEnabled = false;
-        var selectAll = new MenuItem { Header = "Select all" };
+        var selectAll = new MenuItem { Header = "Select all", InputGesture = hotkeys?.SelectAll.FirstOrDefault() };
         selectAll.Click += (_, _) => editor.SelectAll();
         editor.ContextMenu = new ContextMenu { ItemsSource = new[] { copy, selectAll } };
         return editor;

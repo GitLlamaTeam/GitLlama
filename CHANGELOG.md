@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Use platform shortcuts in read-only editor and multi-selection tests so macOS uses Command instead of Control. Show the matching Copy and Select all shortcuts in the editor menu.
 - Switch Discard all changes to Discard selected changes when multiple working files are selected. Confirm the affected paths, restore only those files' staged and unstaged content, and preserve unselected changes, ignored files and nested repositories.
 - Add Shift-click and Ctrl-click file selection in the working-change and commit inspectors. With multiple files selected, stage or unstage only those files; with zero or one selected, keep Stage all and Unstage all. Show selected files together as read-only diffs or source previews. Preserve unchanged selections and previews during refresh, and clear them when changing repositories or commits.
 - Show file history as a selectable revision list beside a read-only source preview. Compare a revision with the current working file or another revision side by side, with syntax highlighting, added/removed line colors, resizable panes and explicit missing-file states. Keep comparisons read-only and ignore results from an older file or repository selection.
