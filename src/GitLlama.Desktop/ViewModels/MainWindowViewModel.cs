@@ -1232,6 +1232,7 @@ public partial class MainWindowViewModel : ObservableObject
         var version = Interlocked.Increment(ref _repositorySelectionVersion);
         ResetPresentation();
         ResetFeatures();
+        ResetFileRevisionPreview();
         _ = ConfigureWatcherAsync();
         BranchLines.Clear();
         CommitLines.Clear();
@@ -3306,34 +3307,49 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadFileHistoryAsync()
     {
-        if (SelectedRepository is not { } repo)
-        {
-            return;
-        }
-
+        if (SelectedRepository is not { } repo) return;
+        var path = FileHistoryPath.Trim();
         var version = Interlocked.Read(ref _repositorySelectionVersion);
+        var generation = Interlocked.Increment(ref _fileHistoryLoadGeneration);
+        string? start = ReviewSource == "Commit" && SelectedCommitLine is { } line
+            && _commitDetails.TryGetValue(line, out var commit) ? commit.Sha : null;
+        FileHistoryFeedback = "Loading file history…";
+        bool Current() => generation == Interlocked.Read(ref _fileHistoryLoadGeneration)
+            && version == Interlocked.Read(ref _repositorySelectionVersion)
+            && SelectedRepository?.Path == repo.Path && FileHistoryPath.Trim() == path;
         try
         {
-            string output;
-            var entries = await new GitFileHistoryService().GetAsync(repo.Path, FileHistoryPath.Trim());
-            output =
-                entries.Count == 0
-                    ? "No file history."
-                    : string.Join(Environment.NewLine, entries.Select(entry => $"{entry.Sha[..7]} {entry.Subject}"));
-            if (version != Interlocked.Read(ref _repositorySelectionVersion) || SelectedRepository?.Path != repo.Path)
+            var entries = await new GitFileHistoryService().GetAsync(repo.Path, path, maxCount: 1000, startCommit: start);
+            if (!Current()) return;
+            var selected = SelectedFileRevision?.Sha;
+            var comparison = SelectedComparisonRevision?.Sha;
+            _settingFileRevisions = true;
+            try
             {
-                return;
+                FileRevisions.Clear();
+                foreach (var entry in entries) FileRevisions.Add(entry);
+                SelectedFileRevision = entries.FirstOrDefault(entry => entry.Sha == selected) ?? entries.FirstOrDefault();
+                SelectedComparisonRevision = entries.FirstOrDefault(entry => entry.Sha == comparison)
+                    ?? entries.Skip(1).FirstOrDefault() ?? entries.FirstOrDefault();
             }
-
-            FileHistorySummary = output;
-            Status = "Load file history completed.";
+            finally { _settingFileRevisions = false; }
+            FileHistorySummary = entries.Count == 0 ? "No file history."
+                : string.Join(Environment.NewLine, entries.Select(entry => $"{entry.Sha[..7]} {entry.Subject}"));
+            if (entries.Count == 0)
+            {
+                FileRevisionContent = FileComparisonContent = "";
+                FileRevisionLabel = "Choose a revision";
+                FileRevisionLineKinds = FileComparisonLineKinds = new Dictionary<int, string>();
+                FileHistoryFeedback = "No committed history was found for this path.";
+            }
+            else await LoadFileRevisionPreviewAsync();
         }
         catch (Exception e)
         {
-            FileLog.Error(e, "Load file history");
-            if (version == Interlocked.Read(ref _repositorySelectionVersion))
+            if (Current())
             {
-                Status = FileHistorySummary = PresentError(e);
+                ResetFileRevisionPreview();
+                Status = FileHistorySummary = FileHistoryFeedback = PresentError(e);
             }
         }
     }

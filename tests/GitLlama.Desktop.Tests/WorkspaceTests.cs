@@ -189,6 +189,59 @@ public sealed class WorkspaceTests
         Assert.Contains("canceled", vm.AzureOAuthFeedback);
     }
 
+    [AvaloniaFact]
+    public async Task FileHistoryPreviewsSelectionAndComparesWorkingOrOtherRevisions()
+    {
+        using var fixture = new WorkspaceFixture();
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        vm.OpenFileReview("Working", "README.md");
+        await vm.ReviewFileHistoryCommand.ExecuteAsync(null);
+        Assert.True(vm.IsHistoryMode);
+        Assert.False(vm.IsContentReview);
+        Assert.True(vm.FileRevisions.Count > 1);
+        vm.SelectedFileRevision = vm.FileRevisions.Last();
+        await vm.LoadFileRevisionPreviewAsync();
+        Assert.Contains("Initial commit", vm.FileRevisionContent);
+        Assert.DoesNotContain("Documentation updates", vm.FileRevisionContent);
+        vm.FileComparisonMode = "Current file";
+        await vm.LoadFileRevisionPreviewAsync();
+        Assert.Contains("Documentation updates", vm.FileComparisonContent);
+        Assert.NotEmpty(vm.FileComparisonLineKinds);
+        Assert.Equal("Current working file", vm.FileComparisonLabel);
+        var view = new FileReviewView();
+        var window = new Window { Width = 1380, Height = 700, DataContext = vm, Content = view };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(view.FindControl<GitLlama.Desktop.Controls.CodeView>("HistoryRevisionPreview")!.Editor.IsReadOnly);
+            Assert.True(view.FindControl<GitLlama.Desktop.Controls.CodeView>("HistoryComparisonPreview")!.Editor.IsReadOnly);
+            SavePreview(window, "file-history-current-comparison.png");
+            vm.FileComparisonMode = "Another revision";
+            vm.SelectedComparisonRevision = vm.FileRevisions.First();
+            await vm.LoadFileRevisionPreviewAsync();
+            Assert.DoesNotContain("Documentation updates", vm.FileComparisonContent);
+            Assert.Contains("Initial commit", vm.FileComparisonContent);
+            Assert.NotEqual(vm.FileRevisionContent, vm.FileComparisonContent);
+            Assert.True(view.FindControl<ComboBox>("ComparisonRevisionPicker")!.IsVisible);
+            SavePreview(window, "file-history-revision-comparison.png");
+            vm.FileComparisonMode = "Preview";
+            view.FindControl<ListBox>("FileRevisionList")!.SelectedItem = vm.FileRevisions.First();
+            await vm.LoadFileRevisionPreviewAsync();
+            Assert.Equal(vm.FileRevisions.First(), vm.SelectedFileRevision);
+            Assert.False(vm.IsHistoryComparison);
+            SavePreview(window, "file-history-preview.png");
+            var pending = vm.LoadFileRevisionPreviewAsync();
+            vm.FileHistoryPath = "src/Auth.cs";
+            await pending;
+            Assert.Empty(vm.FileRevisionContent);
+            Assert.Empty(vm.FileComparisonContent);
+            Assert.Empty(vm.FileRevisions);
+        }
+        finally { window.Close(); }
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]

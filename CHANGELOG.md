@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show file history as a selectable revision list beside a read-only source preview. Compare a revision with the current working file or another revision side by side, with syntax highlighting, added/removed line colors, resizable panes and explicit missing-file states. Keep comparisons read-only and ignore results from an older file or repository selection.
 - Make file and diff previews read-only text editors with normal selection across lines, keyboard shortcuts, and Copy / Select all menus. Preserve syntax highlighting, diff colors and line numbers, and selective line/hunk staging.
 - Replace typed confirmation phrases with warning dialogs for resets, rebases, deletions, discarding file edits, LFS force unlocks, and pull request merges. Name the target and consequences, default destructive dialogs to Cancel, and reject confirmation if the repository or target changes.
 

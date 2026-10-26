@@ -29,11 +29,20 @@ public sealed class CodeView : UserControl
     }
     private readonly AvaloniaEdit.TextEditor _editor;
     private SourceLine[] _highlighted = [];
+    public static readonly StyledProperty<IReadOnlyDictionary<int, string>?> LineKindsProperty =
+        AvaloniaProperty.Register<CodeView, IReadOnlyDictionary<int, string>?>(nameof(LineKinds));
+    public IReadOnlyDictionary<int, string>? LineKinds
+    {
+        get => GetValue(LineKindsProperty);
+        set => SetValue(LineKindsProperty, value);
+    }
     internal AvaloniaEdit.TextEditor Editor => _editor;
 
     public CodeView()
     {
         _editor = ReadOnlySourceEditor.Create();
+        _editor.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackground(number =>
+            LineKinds?.TryGetValue(number, out var kind) == true ? kind : null));
         _editor.TextArea.TextView.LineTransformers.Add(new SourceLineColorizer(number =>
             number <= _highlighted.Length ? _highlighted[number - 1] : null));
         Content = _editor;
@@ -88,6 +97,8 @@ public sealed class CodeView : UserControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (_editor is not null && change.Property == LineKindsProperty)
+            _editor.TextArea.TextView.InvalidateLayer(AvaloniaEdit.Rendering.KnownLayer.Background);
         if (_editor is not null && (change.Property == TextProperty || change.Property == FilePathProperty))
         {
             _highlighted = SourceHighlighter.Highlight(Text ?? "", FilePath);

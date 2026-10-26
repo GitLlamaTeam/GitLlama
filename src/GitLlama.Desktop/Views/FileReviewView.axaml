@@ -79,6 +79,66 @@
         </Border>
 
         <Grid Grid.Row="2">
+            <Grid IsVisible="{Binding IsHistoryMode}" ColumnDefinitions="260,6,*">
+                <Border Background="#25272C" BorderBrush="#41454D" BorderThickness="0,0,1,0">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <DockPanel Margin="10,8">
+                            <Button DockPanel.Dock="Right" Classes="workspace review-navigation" Content="Refresh"
+                                    Command="{Binding LoadFileHistoryCommand}" />
+                            <TextBlock Text="File history" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <ListBox Grid.Row="1" x:Name="FileRevisionList" ItemsSource="{Binding FileRevisions}"
+                                 SelectedItem="{Binding SelectedFileRevision}" Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="4,3" Spacing="3">
+                                        <TextBlock Text="{Binding Subject}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Subject}" />
+                                        <TextBlock Text="{Binding ShortSha}" ToolTip.Tip="{Binding Sha}"
+                                                   FontFamily="Consolas, Menlo, monospace" FontSize="11" Foreground="#9CA3AF" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Grid.Row="2" Margin="10,8" FontSize="11" Foreground="#9CA3AF"
+                                   Text="Up to 1,000 revisions · Read-only" />
+                    </Grid>
+                </Border>
+                <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#393E47" />
+                <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*">
+                    <Border Background="#292C32" Padding="10,6" BorderBrush="#41454D" BorderThickness="0,0,0,1">
+                        <WrapPanel ItemSpacing="8" LineSpacing="6">
+                            <TextBlock Text="View" VerticalAlignment="Center" />
+                            <ComboBox x:Name="FileComparisonModePicker" Width="170" ItemsSource="{Binding FileComparisonModes}"
+                                      SelectedItem="{Binding FileComparisonMode}" />
+                            <ComboBox x:Name="ComparisonRevisionPicker" MinWidth="200" MaxWidth="420"
+                                      ItemsSource="{Binding FileRevisions}" SelectedItem="{Binding SelectedComparisonRevision}"
+                                      IsVisible="{Binding IsRevisionComparison}" />
+                        </WrapPanel>
+                    </Border>
+                    <TextBlock Grid.Row="1" Text="{Binding FileHistoryFeedback}" Margin="10,6" Foreground="#B5BAC1"
+                               TextWrapping="Wrap" />
+                    <Grid Grid.Row="2" ColumnDefinitions="*,6,*">
+                        <Grid Grid.ColumnSpan="{Binding HistoryPreviewColumnSpan}" RowDefinitions="Auto,*">
+                            <Border Background="#292C32" Padding="10,7" BorderBrush="#41454D" BorderThickness="0,1,0,1">
+                                <TextBlock Text="{Binding FileRevisionLabel}" TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding FileRevisionLabel}" />
+                            </Border>
+                            <controls:CodeView Grid.Row="1" x:Name="HistoryRevisionPreview" FilePath="{Binding FileHistoryPath}"
+                                               Text="{Binding FileRevisionContent}" LineKinds="{Binding FileRevisionLineKinds}" />
+                        </Grid>
+                        <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#41454D"
+                                      IsVisible="{Binding IsHistoryComparison}" />
+                        <Grid Grid.Column="2" RowDefinitions="Auto,*" IsVisible="{Binding IsHistoryComparison}">
+                            <Border Background="#292C32" Padding="10,7" BorderBrush="#41454D" BorderThickness="0,1,0,1">
+                                <TextBlock Text="{Binding FileComparisonLabel}" TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding FileComparisonLabel}" />
+                            </Border>
+                            <controls:CodeView Grid.Row="1" x:Name="HistoryComparisonPreview" FilePath="{Binding FileHistoryPath}"
+                                               Text="{Binding FileComparisonContent}" LineKinds="{Binding FileComparisonLineKinds}" />
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Grid>
             <controls:PatchView FilePath="{Binding ReviewPath}"
                                 Patch="{Binding CenterPatch}"
                                 SelectedLine="{Binding SelectedPatchLine}"

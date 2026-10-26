@@ -2,7 +2,11 @@ using LibGit2Sharp;
 
 namespace GitLlama.Git;
 
-public sealed record GitFileHistoryEntry(string Sha, string Subject);
+public sealed record GitFileHistoryEntry(string Sha, string Subject)
+{
+    public string ShortSha => Sha[..7];
+    public override string ToString() => $"{ShortSha} · {Subject}";
+}
 
 public sealed class GitFileHistoryService
 {
@@ -10,7 +14,8 @@ public sealed class GitFileHistoryService
         string repositoryPath,
         string relativePath,
         int maxCount = 100,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        string? startCommit = null
     ) =>
         Task.Run<IReadOnlyList<GitFileHistoryEntry>>(
             () =>
@@ -30,7 +35,9 @@ public sealed class GitFileHistoryService
                 using var repo = new Repository(repositoryPath);
                 var path = relativePath.Replace('\\', '/');
                 var result = new List<GitFileHistoryEntry>();
-                foreach (var commit in repo.Commits)
+                if (startCommit is null && repo.Head.Tip is null) return result;
+                var commits = repo.Commits.QueryBy(new CommitFilter { IncludeReachableFrom = startCommit ?? "HEAD" });
+                foreach (var commit in commits)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (

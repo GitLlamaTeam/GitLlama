@@ -7,6 +7,67 @@ namespace GitLlama.Core.Tests;
 public sealed class CompletionWorkflowTests
 {
     [Fact]
+    public async Task FileComparisonsReadRevisionsAndWorkingCopyWithoutChangingRepository()
+    {
+        using var fixture = new Fixture();
+        string before, after;
+        var signature = new Signature("Test", "test@example.com", DateTimeOffset.UtcNow);
+        using (var repo = new Repository(fixture.Path))
+        {
+            before = repo.Head.Tip.Sha;
+            File.WriteAllText(Path.Combine(fixture.Path, "file.txt"), "one\nnew value\nthree\n");
+            Commands.Stage(repo, "file.txt");
+            after = repo.Commit("Change value", signature, signature).Sha;
+            File.WriteAllText(Path.Combine(fixture.Path, "file.txt"), "staged value\n");
+            Commands.Stage(repo, "file.txt");
+        }
+        var current = "working value\nnot staged\n";
+        File.WriteAllText(Path.Combine(fixture.Path, "file.txt"), current);
+        var index = File.ReadAllBytes(Path.Combine(fixture.Path, ".git", "index"));
+        var service = new GitFileComparisonService();
+        var revisions = await service.GetAsync(fixture.Path, "file.txt", before, after);
+        Assert.Equal(fixture.Original, revisions.Left.Text);
+        Assert.Equal("one\nnew value\nthree\n", revisions.Right.Text);
+        Assert.Contains("+new value", revisions.Patch);
+        var working = await service.GetAsync(fixture.Path, "file.txt", before);
+        Assert.Equal(current, working.Right.Text);
+        Assert.Contains("+working value", working.Patch);
+        Assert.Equal(index, File.ReadAllBytes(Path.Combine(fixture.Path, ".git", "index")));
+        Assert.Equal(current, File.ReadAllText(Path.Combine(fixture.Path, "file.txt")));
+        using (var repo = new Repository(fixture.Path)) Assert.Equal(after, repo.Head.Tip.Sha);
+        var history = await new GitFileHistoryService().GetAsync(fixture.Path, "file.txt", startCommit: before);
+        Assert.Equal(before, Assert.Single(history).Sha);
+    }
+
+    [Fact]
+    public async Task FileComparisonHandlesMissingVersionsAndRejectsBinaryOrUnsafePaths()
+    {
+        using var fixture = new Fixture();
+        string before, deleted;
+        using (var repo = new Repository(fixture.Path))
+        {
+            before = repo.Head.Tip.Sha;
+            Commands.Remove(repo, "file.txt");
+            var signature = new Signature("Test", "test@example.com", DateTimeOffset.UtcNow);
+            deleted = repo.Commit("Delete file", signature, signature).Sha;
+        }
+        var service = new GitFileComparisonService();
+        var result = await service.GetAsync(fixture.Path, "file.txt", before, deleted);
+        Assert.True(result.Left.Exists);
+        Assert.False(result.Right.Exists);
+        Assert.Empty(result.Right.Text);
+        Assert.Contains("-one", result.Patch);
+        var restored = await service.GetAsync(fixture.Path, "file.txt", deleted, before);
+        Assert.False(restored.Left.Exists);
+        Assert.Equal(fixture.Original, restored.Right.Text);
+        var missing = await service.GetAsync(fixture.Path, "file.txt", before);
+        Assert.False(missing.Right.Exists);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetAsync(fixture.Path, "../outside.txt", before));
+        File.WriteAllBytes(Path.Combine(fixture.Path, "file.txt"), new byte[] { 1, 0, 2 });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetAsync(fixture.Path, "file.txt", before));
+    }
+
+    [Fact]
     public async Task InitializeCloneAndReflogRecoveryRoundTrip()
     {
         using var fixture = new Fixture();

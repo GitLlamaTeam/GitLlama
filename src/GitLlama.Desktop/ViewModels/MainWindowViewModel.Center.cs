@@ -168,7 +168,7 @@ public partial class MainWindowViewModel
     public bool IsHistoryMode => FileReviewMode == "History";
     public bool IsBlameMode => FileReviewMode == "Blame";
     public bool IsDiffReview => FileReviewMode == "Diff";
-    public bool IsContentReview => !IsDiffReview;
+    public bool IsContentReview => !IsDiffReview && !IsHistoryMode;
     public bool IsWorkingFileReview => ReviewSource == "Working";
     public bool IsWorkingDiffReview => IsFileReview && IsWorkingFileReview && IsDiffReview;
     public string ApplyLineLabel => ReviewStagedPatch ? "Unstage line" : "Stage line";
