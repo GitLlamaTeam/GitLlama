@@ -11,7 +11,8 @@ namespace GitLlama.Desktop.Controls;
 /// <summary>A selectable source document. User input never changes its contents.</summary>
 internal static class ReadOnlySourceEditor
 {
-    internal static TextEditor Create()
+    internal static TextEditor Create(IReadOnlyList<Avalonia.Input.KeyGesture>? copyShortcuts = null,
+        IReadOnlyList<Avalonia.Input.KeyGesture>? selectAllShortcuts = null)
     {
         var editor = new TextEditor
         {
@@ -27,15 +28,32 @@ internal static class ReadOnlySourceEditor
             Padding = new Thickness(8, 4),
         };
         var hotkeys = Avalonia.Application.Current?.PlatformSettings?.HotkeyConfiguration;
-        var copy = new MenuItem { Header = "Copy", InputGesture = hotkeys?.Copy.FirstOrDefault() };
-        copy.Click += async (_, _) =>
+        copyShortcuts ??= hotkeys?.Copy ?? [];
+        selectAllShortcuts ??= hotkeys?.SelectAll ?? [];
+        var copy = new MenuItem { Header = "Copy", InputGesture = copyShortcuts.FirstOrDefault() };
+        async Task CopySelectionAsync()
         {
             if (TopLevel.GetTopLevel(editor)?.Clipboard is { } clipboard && editor.SelectionLength > 0)
                 await clipboard.SetTextAsync(editor.SelectedText);
-        };
+        }
+        copy.Click += async (_, _) => await CopySelectionAsync();
+        // Handle these read-only actions before the editor's routed commands, and await the clipboard write.
+        editor.TextArea.AddHandler(Avalonia.Input.InputElement.KeyDownEvent, async (_, args) =>
+        {
+            if (copyShortcuts.Any(gesture => gesture.Matches(args)))
+            {
+                args.Handled = true;
+                await CopySelectionAsync();
+            }
+            else if (selectAllShortcuts.Any(gesture => gesture.Matches(args)))
+            {
+                args.Handled = true;
+                editor.SelectAll();
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         editor.TextArea.SelectionChanged += (_, _) => copy.IsEnabled = editor.SelectionLength > 0;
         copy.IsEnabled = false;
-        var selectAll = new MenuItem { Header = "Select all", InputGesture = hotkeys?.SelectAll.FirstOrDefault() };
+        var selectAll = new MenuItem { Header = "Select all", InputGesture = selectAllShortcuts.FirstOrDefault() };
         selectAll.Click += (_, _) => editor.SelectAll();
         editor.ContextMenu = new ContextMenu { ItemsSource = new[] { copy, selectAll } };
         return editor;

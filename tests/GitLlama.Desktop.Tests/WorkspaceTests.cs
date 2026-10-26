@@ -2493,6 +2493,45 @@ public sealed class WorkspaceTests
         }
     }
 
+    private static async Task AssertClipboardTextAsync(Avalonia.Input.Platform.IClipboard clipboard, string expected)
+    {
+        string? copied = null;
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            copied = (await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clipboard))?.Replace("\r\n", "\n");
+            if (copied == expected) break;
+            await Task.Delay(10);
+        }
+        Assert.Equal(expected, copied);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(Avalonia.Input.KeyModifiers.Control)]
+    [InlineData(Avalonia.Input.KeyModifiers.Meta)]
+    public async Task ReadOnlyCopySupportsControlAndCommand(Avalonia.Input.KeyModifiers commandModifier)
+    {
+        var copyGesture = new Avalonia.Input.KeyGesture(Avalonia.Input.Key.C, commandModifier);
+        var selectAllGesture = new Avalonia.Input.KeyGesture(Avalonia.Input.Key.A, commandModifier);
+        var editor = GitLlama.Desktop.Controls.ReadOnlySourceEditor.Create([copyGesture], [selectAllGesture]);
+        editor.Text = "first line\nsecond line";
+        var window = new Window { Width = 600, Height = 250, Content = editor };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            editor.TextArea.Focus();
+            var clipboard = TopLevel.GetTopLevel(editor)!.Clipboard!;
+            await clipboard.ClearAsync();
+            editor.Select(0, 10);
+            PressShortcut(window, copyGesture, Avalonia.Input.PhysicalKey.C);
+            await AssertClipboardTextAsync(clipboard, "first line");
+            PressShortcut(window, selectAllGesture, Avalonia.Input.PhysicalKey.A);
+            Assert.Equal(editor.Text, editor.SelectedText);
+            Assert.True(editor.IsReadOnly);
+        }
+        finally { window.Close(); }
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -2528,7 +2567,7 @@ public sealed class WorkspaceTests
             PressShortcut(window, copyGesture, Avalonia.Input.PhysicalKey.C);
             Assert.Equal(hotkeys.Copy.First(), editor.ContextMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Copy")).InputGesture);
             var clipboard = TopLevel.GetTopLevel(editor)!.Clipboard!;
-            Assert.Equal("old value\nnew value", (await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clipboard))?.Replace("\r\n", "\n"));
+            await AssertClipboardTextAsync(clipboard, "old value\nnew value");
             window.KeyTextInput("replaced");
             window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Delete, Avalonia.Input.RawInputModifiers.None);
             window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Delete, Avalonia.Input.RawInputModifiers.None);
