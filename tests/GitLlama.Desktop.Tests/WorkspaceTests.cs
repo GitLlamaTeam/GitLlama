@@ -189,6 +189,161 @@ public sealed class WorkspaceTests
         Assert.Contains("canceled", vm.AzureOAuthFeedback);
     }
 
+    private static void ClickInspectorFile(Window window, ListBox list, int index, bool shift = false, bool control = false)
+    {
+        list.ScrollIntoView(list.Items[index]!);
+        Dispatcher.UIThread.RunJobs();
+        var row = list.ContainerFromIndex(index)!;
+        var point = row.TranslatePoint(new Point(130, row.Bounds.Height / 2), window)!.Value;
+        var modifiers = shift ? Avalonia.Input.RawInputModifiers.Shift
+            : control ? Avalonia.Input.RawInputModifiers.Control : Avalonia.Input.RawInputModifiers.None;
+        window.MouseDown(point, Avalonia.Input.MouseButton.Left, modifiers);
+        window.MouseUp(point, Avalonia.Input.MouseButton.Left, modifiers);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    [AvaloniaFact]
+    public async Task InspectorShiftSelectionStagesAndUnstagesOnlySelectedFiles()
+    {
+        using var fixture = new WorkspaceFixture();
+        File.WriteAllText(Path.Combine(fixture.RepositoryPath, "extra.cs"), "// Leave this file unstaged\n");
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        vm.IsWorkingTreeInspector = true;
+        var inspector = new InspectorView();
+        var review = new FileReviewView();
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("400,*") };
+        layout.Children.Add(inspector);
+        Grid.SetColumn(review, 1);
+        layout.Children.Add(review);
+        var window = new Window { Width = 1300, Height = 850, DataContext = vm, Content = layout };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var list = inspector.FindControl<ListBox>("UnstagedFileList")!;
+            vm.SelectedWorkingFile = vm.UnstagedFiles[2];
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(vm.SelectedWorkingFile, Assert.Single(list.SelectedItems!.Cast<WorkingFileRow>()));
+            ClickInspectorFile(window, list, 0);
+            Assert.Equal("✓ Stage all", vm.InspectorStageLabel);
+            ClickInspectorFile(window, list, 1, shift: true);
+            ClickInspectorFile(window, list, 2, control: true);
+            Assert.Equal(3, vm.SelectedUnstagedFiles.Count);
+            ClickInspectorFile(window, list, 2, control: true);
+            Assert.Equal(2, vm.SelectedUnstagedFiles.Count);
+            Assert.Equal("Stage selected (2)", vm.InspectorStageLabel);
+            Assert.False(vm.CanInspectorUnstage);
+            Assert.True(vm.IsMultiFileReview);
+            var selected = vm.SelectedUnstagedFiles.Select(file => file.Path).ToArray();
+            await vm.LoadMultiFilePreviewsAsync();
+            Assert.Equal(selected, vm.MultiFilePreviews.Select(preview => preview.Path));
+            await vm.RefreshCommand.ExecuteAsync(null);
+            Assert.Equal(2, vm.SelectedUnstagedFiles.Count);
+            Assert.True(vm.IsMultiFileReview);
+            Assert.Equal(2, vm.MultiFilePreviews.Count);
+            SavePreview(window, "multi-file-working-selection.png");
+            await vm.StageInspectorFilesCommand.ExecuteAsync(null);
+            using (var repo = new Repository(fixture.RepositoryPath))
+            {
+                var staged = repo.RetrieveStatus().Where(entry => (entry.State & (FileStatus.NewInIndex | FileStatus.ModifiedInIndex)) != 0)
+                    .Select(entry => entry.FilePath).ToArray();
+                Assert.Equal(selected.Order(), staged.Order());
+            }
+            Assert.Single(vm.UnstagedFiles);
+            var stagedList = inspector.FindControl<ListBox>("StagedFileList")!;
+            ClickInspectorFile(window, stagedList, 0);
+            Assert.Equal("Unstage all", vm.InspectorUnstageLabel);
+            Assert.True(vm.CanInspectorStage);
+            ClickInspectorFile(window, stagedList, 1, shift: true);
+            Assert.Equal("Unstage selected (2)", vm.InspectorUnstageLabel);
+            Assert.False(vm.CanInspectorStage);
+            await vm.UnstageInspectorFilesCommand.ExecuteAsync(null);
+            Assert.Empty(vm.StagedFiles);
+            Assert.Equal(3, vm.UnstagedFiles.Count);
+            vm.ClearInspectorFileSelectionCommand.Execute(null);
+            Assert.Equal("✓ Stage all", vm.InspectorStageLabel);
+            Assert.False(vm.IsMultiFileReview);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public async Task SingleInspectorSelectionKeepsStageAllAndUnstageAllBehavior()
+    {
+        using var fixture = new WorkspaceFixture();
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        var count = vm.UnstagedFiles.Count;
+        Assert.True(count > 1);
+        vm.SelectedUnstagedFiles.Add(vm.UnstagedFiles.First());
+        vm.ActivateWorkingFileSelection(false, vm.SelectedUnstagedFiles.First());
+        Assert.Equal("✓ Stage all", vm.InspectorStageLabel);
+        await vm.StageInspectorFilesCommand.ExecuteAsync(null);
+        Assert.Equal(count, vm.StagedFiles.Count);
+        Assert.Empty(vm.UnstagedFiles);
+        vm.SelectedStagedFiles.Add(vm.StagedFiles.First());
+        vm.ActivateWorkingFileSelection(true, vm.SelectedStagedFiles.First());
+        Assert.Equal("Unstage all", vm.InspectorUnstageLabel);
+        await vm.UnstageInspectorFilesCommand.ExecuteAsync(null);
+        Assert.Empty(vm.StagedFiles);
+        Assert.Equal(count, vm.UnstagedFiles.Count);
+    }
+
+    [AvaloniaFact]
+    public async Task CommitInspectorShiftSelectionOpensMultipleDiffsAndFilePreviews()
+    {
+        using var fixture = new WorkspaceFixture();
+        using (var repo = new Repository(fixture.RepositoryPath))
+        {
+            File.WriteAllText(Path.Combine(fixture.RepositoryPath, "extra.cs"), "// Third changed file\n");
+            Commands.Stage(repo, "*");
+            var author = new Signature("Test", "test@example.com", DateTimeOffset.UtcNow);
+            repo.Commit("Three files for review", author, author);
+        }
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        await WaitUntilAsync(() => vm.HistoryFileRows.Count == 3);
+        var inspector = new InspectorView();
+        var review = new FileReviewView();
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("400,*") };
+        layout.Children.Add(inspector);
+        Grid.SetColumn(review, 1);
+        layout.Children.Add(review);
+        var window = new Window { Width = 1300, Height = 850, DataContext = vm, Content = layout };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var list = inspector.FindControl<ListBox>("CommitFileList")!;
+            ClickInspectorFile(window, list, 0);
+            ClickInspectorFile(window, list, 1, shift: true);
+            Assert.Equal(2, vm.SelectedCommitFiles.Count);
+            Assert.True(vm.IsMultiFileReview);
+            Assert.Equal("2 selected files", vm.ReviewTitle);
+            await vm.LoadMultiFilePreviewsAsync();
+            Assert.Equal(2, vm.MultiFilePreviews.Count);
+            Assert.All(vm.MultiFilePreviews, preview => { Assert.True(preview.IsDiff); Assert.Contains("diff --git", preview.Content); });
+            SavePreview(window, "multi-file-commit-diffs.png");
+            vm.ReviewFileCommand.Execute(null);
+            await vm.LoadMultiFilePreviewsAsync();
+            Assert.All(vm.MultiFilePreviews, preview => Assert.True(preview.IsFile));
+            SavePreview(window, "multi-file-commit-content.png");
+            ClickInspectorFile(window, list, 2);
+            Assert.Single(vm.SelectedCommitFiles);
+            Assert.False(vm.IsMultiFileReview);
+            ClickInspectorFile(window, list, 0);
+            ClickInspectorFile(window, list, 1, shift: true);
+            var pending = vm.LoadMultiFilePreviewsAsync();
+            vm.SelectedHistoryRow = vm.HistoryRows.Skip(1).First();
+            await pending;
+            Assert.Empty(vm.SelectedCommitFiles);
+            Assert.Empty(vm.MultiFilePreviews);
+            Assert.False(vm.IsMultiFileReview);
+        }
+        finally { window.Close(); }
+    }
+
     [AvaloniaFact]
     public async Task FileHistoryPreviewsSelectionAndComparesWorkingOrOtherRevisions()
     {
@@ -320,6 +475,61 @@ public sealed class WorkspaceTests
             Assert.False(button.IsVisible);
             Assert.Equal("Discarded all changes.", vm.Status);
             Assert.Empty(vm.ErrorNotifications);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public async Task DiscardInspectorWarnsForSelectedFilesAndLeavesOtherChangesUntouched()
+    {
+        using var fixture = new WorkspaceFixture();
+        File.WriteAllText(Path.Combine(fixture.RepositoryPath, "extra.cs"), "// selected new file\n");
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        vm.IsWorkingTreeInspector = true;
+        var view = new InspectorView();
+        var window = new Window { Content = view, DataContext = vm, Width = 500, Height = 850 };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var list = view.FindControl<ListBox>("UnstagedFileList")!;
+            var button = view.FindControl<Button>("DiscardAllChangesButton")!;
+            ClickInspectorFile(window, list, 0);
+            Assert.Equal("Discard all changes…", button.Content);
+            ClickInspectorFile(window, list, 1, shift: true);
+            var selected = vm.InspectorDiscardPaths();
+            Assert.Equal(2, selected.Length);
+            Assert.Equal("Discard selected changes (2)…", button.Content);
+            var kept = vm.UnstagedFiles.Single(file => !selected.Contains(file.Path)).Path;
+            var keptContent = File.ReadAllText(Path.Combine(fixture.RepositoryPath, kept));
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                await WaitUntilAsync(() => window.OwnedWindows.Any());
+                var dialog = window.OwnedWindows.Single();
+                var warning = string.Join("\n", dialog.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
+                Assert.All(selected, path => Assert.Contains(path, warning));
+                Assert.Contains("staged and unstaged", warning);
+                var confirm = dialog.GetVisualDescendants().OfType<Button>().Single(item => Equals(item.Content, "Discard selected changes"));
+                Assert.False(confirm.IsDefault);
+                if (attempt == 0)
+                {
+                    SavePreview(dialog, "discard-selected-warning.png");
+                    dialog.GetVisualDescendants().OfType<Button>().Single(item => Equals(item.Content, "Cancel"))
+                        .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    await WaitUntilAsync(() => !dialog.IsVisible);
+                    Assert.Equal(3, vm.WorkingFiles.Count);
+                }
+                else
+                {
+                    confirm.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    await WaitUntilAsync(() => !vm.IsFeatureBusy && vm.WorkingFiles.Count == 1);
+                }
+            }
+            Assert.Equal(kept, Assert.Single(vm.WorkingFiles).Path);
+            Assert.Equal(keptContent, File.ReadAllText(Path.Combine(fixture.RepositoryPath, kept)));
+            Assert.Equal("Discarded changes in 2 selected files.", vm.Status);
         }
         finally { window.Close(); }
     }

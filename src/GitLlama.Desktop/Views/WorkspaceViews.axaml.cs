@@ -146,6 +146,7 @@ public partial class InspectorView : UserControl
 {
     public InspectorView() => AvaloniaXamlLoader.Load(this);
 
+    private bool _updatingFileSelection;
     private void StagedFile_SelectionChanged(object? sender, SelectionChangedEventArgs e) => SelectWorkingFile(e, true);
 
     private void UnstagedFile_SelectionChanged(object? sender, SelectionChangedEventArgs e) =>
@@ -153,14 +154,21 @@ public partial class InspectorView : UserControl
 
     private void SelectWorkingFile(SelectionChangedEventArgs e, bool staged)
     {
-        if (
-            DataContext is MainWindowViewModel vm
-            && !vm.IsUpdatingContextSnapshot
-            && e.AddedItems.OfType<WorkingFileRow>().FirstOrDefault() is { } file
-        )
+        if (DataContext is MainWindowViewModel vm && !vm.IsUpdatingContextSnapshot && !_updatingFileSelection)
         {
-            vm.ReviewStagedPatch = staged;
-            vm.SelectedWorkingFile = file;
+            _updatingFileSelection = true;
+            try { vm.ActivateWorkingFileSelection(staged, e.AddedItems.OfType<WorkingFileRow>().LastOrDefault()); }
+            finally { _updatingFileSelection = false; }
+        }
+    }
+
+    private void CommitFile_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm && !vm.IsUpdatingContextSnapshot && !_updatingFileSelection)
+        {
+            _updatingFileSelection = true;
+            try { vm.ActivateCommitFileSelection(e.AddedItems.OfType<HistoryFileRow>().LastOrDefault()); }
+            finally { _updatingFileSelection = false; }
         }
     }
 
@@ -177,6 +185,19 @@ public partial class InspectorView : UserControl
             ?? list.SelectedItem as WorkingFileRow;
         if (file is null)
         {
+            return;
+        }
+
+        if (list.SelectedItems?.Count > 1 && list.SelectedItems.Contains(file))
+        {
+            var staged = ReferenceEquals(list.ItemsSource, vm.StagedFiles);
+            var action = new MenuItem { Header = staged ? vm.InspectorUnstageLabel : vm.InspectorStageLabel };
+            action.Click += async (_, _) => await (staged ? vm.UnstageInspectorFilesCommand : vm.StageInspectorFilesCommand).ExecuteAsync(null);
+            var discard = new MenuItem { Header = vm.InspectorDiscardLabel, Foreground = Avalonia.Media.Brush.Parse("#F28B93"), IsEnabled = vm.CanDiscardAllChanges };
+            discard.Click += DiscardAll_Click;
+            list.ContextMenu = new ContextMenu { ItemsSource = new[] { action, discard } };
+            list.ContextMenu.Open(list);
+            e.Handled = true;
             return;
         }
 

@@ -154,6 +154,7 @@ public partial class MainWindowViewModel
         {
             _contextSnapshotDepth--;
             OnPropertyChanged(nameof(IsUpdatingContextSnapshot));
+            if (_contextSnapshotDepth == 0) ReconcileInspectorSelection();
         });
     }
 
@@ -170,7 +171,7 @@ public partial class MainWindowViewModel
     public bool IsDiffReview => FileReviewMode == "Diff";
     public bool IsContentReview => !IsDiffReview && !IsHistoryMode;
     public bool IsWorkingFileReview => ReviewSource == "Working";
-    public bool IsWorkingDiffReview => IsFileReview && IsWorkingFileReview && IsDiffReview;
+    public bool IsWorkingDiffReview => IsFileReview && IsWorkingFileReview && IsDiffReview && !IsMultiFileReview;
     public string ApplyLineLabel => ReviewStagedPatch ? "Unstage line" : "Stage line";
     public string ApplyHunkLabel => ReviewStagedPatch ? "Unstage hunk" : "Stage hunk";
     public bool CanApplySelectedLine =>
@@ -225,6 +226,7 @@ public partial class MainWindowViewModel
                 nameof(CanReviewDiff),
                 nameof(CenterPatch),
                 nameof(CenterContent),
+                nameof(ReviewTitle),
             }
         )
         {
@@ -265,6 +267,12 @@ public partial class MainWindowViewModel
 
     partial void OnFileReviewModeChanged(string value)
     {
+        if (IsMultiFileReview)
+        {
+            _ = LoadMultiFilePreviewsAsync();
+            NotifyCenterReview();
+            return;
+        }
         if (ReviewSource == "Commit")
         {
             HistoryShowContent = value == "File";

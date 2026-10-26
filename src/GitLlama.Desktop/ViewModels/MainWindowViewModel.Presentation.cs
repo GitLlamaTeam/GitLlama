@@ -131,6 +131,7 @@ public partial class MainWindowViewModel
 
     private void InitializePresentation()
     {
+        InitializeMultiFileSelection();
         WorkingFiles.CollectionChanged += (_, _) =>
         {
             CollectionUpdates.Sync(StagedFiles, WorkingFiles.Where(file => file.IsStaged), file => file.Path);
@@ -164,6 +165,7 @@ public partial class MainWindowViewModel
 
     partial void OnSelectedWorkingFileChanged(WorkingFileRow? value)
     {
+        SynchronizeInspectorSelection(ReviewStagedPatch ? SelectedStagedFiles : SelectedUnstagedFiles, value);
         SelectedChangeLine = value?.Line;
         OnPropertyChanged(nameof(HasSelectedWorkingFile));
         NotifyWorkingSelection();
@@ -181,6 +183,7 @@ public partial class MainWindowViewModel
 
     partial void OnSelectedHistoryFileRowChanged(HistoryFileRow? value)
     {
+        SynchronizeInspectorSelection(SelectedCommitFiles, value);
         SelectedHistoryFile = value?.Line;
         OnPropertyChanged(nameof(HasSelectedHistoryFile));
         if (value is not null)
@@ -353,6 +356,7 @@ public partial class MainWindowViewModel
 
     private void ResetPresentation()
     {
+        ClearInspectorFileSelection();
         _conflictDrafts.Clear();
         Interlocked.Increment(ref _conflictOpenRevision);
         IsFileReview = false;

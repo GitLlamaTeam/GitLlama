@@ -609,6 +609,7 @@ public partial class MainWindowViewModel : ObservableObject
         var previousFile = sameCommit ? SelectedHistoryFileRow?.Path : null;
         if (!sameCommit)
         {
+            ClearInspectorFileSelection();
             _activeHistoryCommit = null;
             HistoryFiles.Clear();
             HistoryFileRows.Clear();

@@ -19,6 +19,66 @@ public sealed class DiscardAllTests : IDisposable
     private void Write(string path, string text) => File.WriteAllText(Path.Combine(root, path), text);
 
     [Fact]
+    public async Task SelectedDiscardRestoresOnlyNamedFilesAndPreservesUnselectedIndexAndWorkingEdits()
+    {
+        string head;
+        using (var repo = new Repository(root))
+        {
+            foreach (var path in new[] { "edit.txt", "deleted.txt", "old.txt", "keep.txt", "a[1].txt", "a1.txt" }) Write(path, "original\n");
+            Write("old.txt", "unique rename content\n");
+            Write(".gitignore", "ignored.tmp\n");
+            Commands.Stage(repo, "*");
+            head = repo.Commit("initial", signature, signature).Sha;
+            Write("edit.txt", "staged edit\n");
+            Write("added.txt", "staged addition\n");
+            Write("keep.txt", "keep staged\n");
+            Commands.Stage(repo, ["edit.txt", "added.txt", "keep.txt"]);
+            Write("edit.txt", "working edit\n");
+            Write("keep.txt", "keep working\n");
+            Write("a[1].txt", "discard literal filename\n");
+            Write("a1.txt", "keep similar filename\n");
+            Commands.Move(repo, "old.txt", "renamed.txt");
+            File.Delete(Path.Combine(root, "deleted.txt"));
+            Write("new.txt", "untracked\n");
+            Write("ignored.tmp", "keep ignored\n");
+        }
+        await new GitDiscardSelectedService().DiscardAsync(root,
+            ["edit.txt", "deleted.txt", "renamed.txt", "added.txt", "new.txt", "a[1].txt", "ignored.tmp"], "DISCARD");
+        using var check = new Repository(root);
+        Assert.Equal(head, check.Head.Tip.Sha);
+        Assert.Equal("unique rename content\n", File.ReadAllText(Path.Combine(root, "old.txt")));
+        foreach (var path in new[] { "edit.txt", "deleted.txt", "a[1].txt" })
+            Assert.Equal("original\n", File.ReadAllText(Path.Combine(root, path)));
+        foreach (var path in new[] { "renamed.txt", "added.txt", "new.txt" }) Assert.False(File.Exists(Path.Combine(root, path)));
+        Assert.Equal("keep working\n", File.ReadAllText(Path.Combine(root, "keep.txt")));
+        Assert.Equal("keep staged\n", check.Lookup<Blob>(check.Index["keep.txt"].Id).GetContentText());
+        Assert.Equal("keep similar filename\n", File.ReadAllText(Path.Combine(root, "a1.txt")));
+        Assert.Equal("keep ignored\n", File.ReadAllText(Path.Combine(root, "ignored.tmp")));
+        Assert.Equal(FileStatus.Unaltered, check.RetrieveStatus("edit.txt"));
+    }
+
+    [Fact]
+    public async Task SelectedDiscardHandlesUnbornAndValidatesEveryPathBeforeDeletion()
+    {
+        Write("added.txt", "selected\n");
+        Write("keep.txt", "not selected\n");
+        using (var repo = new Repository(root)) Commands.Stage(repo, ["added.txt", "keep.txt"]);
+        Repository.Init(Path.Combine(root, "nested"));
+        File.WriteAllText(Path.Combine(root, "nested", "file.txt"), "keep nested");
+        var service = new GitDiscardSelectedService();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DiscardAsync(root, ["added.txt"], "no"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DiscardAsync(root, ["added.txt", "nested/file.txt"], "DISCARD"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.DiscardAsync(root, ["added.txt", "../outside.txt"], "DISCARD"));
+        Assert.True(File.Exists(Path.Combine(root, "added.txt")));
+        await service.DiscardAsync(root, ["added.txt"], "DISCARD");
+        using var check = new Repository(root);
+        Assert.Null(check.Head.Tip);
+        Assert.False(File.Exists(Path.Combine(root, "added.txt")));
+        Assert.Equal("keep.txt", Assert.Single(check.Index).Path);
+        Assert.Equal("keep nested", File.ReadAllText(Path.Combine(root, "nested", "file.txt")));
+    }
+
+    [Fact]
     public async Task DiscardsStagedUnstagedAddedDeletedAndRenamedFilesWithoutMovingHead()
     {
         string head;
@@ -104,6 +164,7 @@ public sealed class DiscardAllTests : IDisposable
         var service = new GitDiscardAllService();
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DiscardAsync(root, "no"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DiscardAsync(root, "DISCARD"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new GitDiscardSelectedService().DiscardAsync(root, ["notes.txt"], "DISCARD"));
         Assert.Equal(before, File.ReadAllText(Path.Combine(root, "notes.txt")));
         Assert.True(File.Exists(Path.Combine(root, "untracked.txt")));
         using var check = new Repository(root);

@@ -13,10 +13,18 @@ public partial class InspectorView
             return;
 
         var repository = vm.SelectedRepository;
-        if (await ConfirmDialog.ShowAsync(window, "Discard all changes?",
-                "All staged and unstaged edits and untracked files will be discarded. Ignored files and nested repositories are kept. This can't be undone.",
-                "Discard all changes", destructive: true)
-            && ReferenceEquals(repository, vm.SelectedRepository))
-            await vm.DiscardAllChangesAsync();
+        var branch = vm.CurrentBranch;
+        var paths = vm.InspectorDiscardPaths();
+        var all = paths.Length == 0;
+        var action = all ? "Discard all changes" : "Discard selected changes";
+        var message = all
+            ? "All staged and unstaged edits and untracked files will be discarded. Ignored files and nested repositories are kept. This can't be undone."
+            : $"Discard all staged and unstaged edits in these {paths.Length} selected files? Selected new files will be deleted; renamed files return to their original paths. Unselected files are kept. This can't be undone.\n\n"
+                + string.Join("\n", paths.Take(12)) + (paths.Length > 12 ? $"\n…and {paths.Length - 12} more files" : "");
+        if (await ConfirmDialog.ShowAsync(window, action + "?", message, action, destructive: true)
+            && ReferenceEquals(repository, vm.SelectedRepository)
+            && branch == vm.CurrentBranch
+            && paths.SequenceEqual(vm.InspectorDiscardPaths(), StringComparer.Ordinal))
+            await vm.DiscardInspectorFilesAsync(paths);
     }
 }

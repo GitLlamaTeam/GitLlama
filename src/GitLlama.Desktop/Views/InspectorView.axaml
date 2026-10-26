@@ -88,9 +88,10 @@
 
                     <TextBlock Text="Changed files" Classes="section" />
 
-                    <ListBox Classes="file-list"
+                    <ListBox x:Name="CommitFileList" Classes="file-list" SelectionMode="Multiple"
                              ItemsSource="{Binding HistoryFileRows}"
-                             SelectedItem="{Binding SelectedHistoryFileRow}"
+                             SelectedItems="{Binding SelectedCommitFiles}"
+                             SelectionChanged="CommitFile_SelectionChanged"
                              MaxHeight="300" />
 
                     <Expander Classes="navigation" Header="Commit metadata">
@@ -149,18 +150,23 @@
                             </StackPanel>
                         </Border>
 
-                        <WrapPanel ItemSpacing="8" IsVisible="{Binding IsCommitInspector}">
+                        <WrapPanel ItemSpacing="8" IsVisible="{Binding IsCommitInspector}" IsEnabled="{Binding !IsFeatureBusy}">
                             <Button Classes="workspace toolbar"
-                                    Content="✓ Stage all"
-                                    Command="{Binding StageAllCommand}" />
+                                    Content="{Binding InspectorStageLabel}"
+                                    IsEnabled="{Binding CanInspectorStage}"
+                                    Command="{Binding StageInspectorFilesCommand}" />
 
                             <Button Classes="workspace toolbar"
-                                    Content="Unstage all"
-                                    Command="{Binding UnstageAllCommand}" />
+                                    Content="{Binding InspectorUnstageLabel}"
+                                    IsEnabled="{Binding CanInspectorUnstage}"
+                                    Command="{Binding UnstageInspectorFilesCommand}" />
+                            <Button Content="Clear selection" Classes="workspace toolbar"
+                                    Command="{Binding ClearInspectorFileSelectionCommand}"
+                                    IsVisible="{Binding HasWorkingFileSelection}" />
 
                             <Button x:Name="DiscardAllChangesButton"
                                     Classes="workspace toolbar"
-                                    Content="Discard all changes…"
+                                    Content="{Binding InspectorDiscardLabel}"
                                     Foreground="#F28B93"
                                     IsVisible="{Binding CanDiscardAllChanges}"
                                     IsEnabled="{Binding !IsFeatureBusy}"
@@ -272,10 +278,10 @@
                                   Classes.empty="{Binding !HasStagedFiles}"
                                   Header="{Binding StagedFilesCaption}"
                                   IsVisible="{Binding IsCommitInspector}">
-                            <ListBox Classes="file-list commit-files"
+                            <ListBox x:Name="StagedFileList" Classes="file-list commit-files" SelectionMode="Multiple"
                                      IsVisible="{Binding HasStagedFiles}"
                                      ItemsSource="{Binding StagedFiles}"
-                                     SelectedItem="{Binding SelectedStagedFile, Mode=OneWay}"
+                                     SelectedItems="{Binding SelectedStagedFiles}"
                                      SelectionChanged="StagedFile_SelectionChanged"
                                      ContextRequested="WorkingFileContextRequested"
                                      MaxHeight="300">
@@ -350,10 +356,10 @@
                                   Classes.empty="{Binding !HasUnstagedFiles}"
                                   Header="{Binding UnstagedFilesCaption}"
                                   IsVisible="{Binding IsCommitInspector}">
-                            <ListBox Classes="file-list commit-files"
+                            <ListBox x:Name="UnstagedFileList" Classes="file-list commit-files" SelectionMode="Multiple"
                                      IsVisible="{Binding HasUnstagedFiles}"
                                      ItemsSource="{Binding UnstagedFiles}"
-                                     SelectedItem="{Binding SelectedUnstagedFile, Mode=OneWay}"
+                                     SelectedItems="{Binding SelectedUnstagedFiles}"
                                      SelectionChanged="UnstagedFile_SelectionChanged"
                                      ContextRequested="WorkingFileContextRequested"
                                      MaxHeight="300">

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:GitLlama.Desktop.Controls"
+             xmlns:vm="clr-namespace:GitLlama.Desktop.ViewModels"
              x:Class="GitLlama.Desktop.Views.FileReviewView">
     <Grid RowDefinitions="Auto,Auto,*" Background="#1E1F22">
         <Border Background="#25282E"
@@ -14,7 +15,7 @@
                         Command="{Binding CloseFileReviewCommand}"
                         ToolTip.Tip="Return to previous view" />
 
-                <TextBlock Text="{Binding ReviewPath}"
+                <TextBlock Text="{Binding ReviewTitle}"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
@@ -44,11 +45,13 @@
 
                 <Button Classes="workspace review-navigation"
                         Content="History"
+                        IsVisible="{Binding IsSingleFileReview}"
                         Classes.active="{Binding IsHistoryMode}"
                         Command="{Binding ReviewFileHistoryCommand}" />
 
                 <Button Classes="workspace review-navigation"
                         Content="Blame"
+                        IsVisible="{Binding IsSingleFileReview}"
                         Classes.active="{Binding IsBlameMode}"
                         Command="{Binding ReviewFileBlameCommand}" />
 
@@ -78,7 +81,7 @@
             </WrapPanel>
         </Border>
 
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" IsVisible="{Binding IsSingleFileReview}">
             <Grid IsVisible="{Binding IsHistoryMode}" ColumnDefinitions="260,6,*">
                 <Border Background="#25272C" BorderBrush="#41454D" BorderThickness="0,0,1,0">
                     <Grid RowDefinitions="Auto,*,Auto">
@@ -147,6 +150,30 @@
             <controls:CodeView FilePath="{Binding ReviewPath}"
                                Text="{Binding CenterContent}"
                                IsVisible="{Binding IsContentReview}" />
+        </Grid>
+        <Grid Grid.Row="2" RowDefinitions="Auto,*" IsVisible="{Binding IsMultiFileReview}">
+            <Border Background="#292C32" Padding="12,8" BorderBrush="#41454D" BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding MultiFileFeedback}" Foreground="#B5BAC1" />
+            </Border>
+            <ScrollViewer Grid.Row="1" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding MultiFilePreviews}" Margin="10">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:MultiFilePreview">
+                            <Border BorderBrush="#41454D" BorderThickness="1" Margin="0,0,0,12" CornerRadius="4">
+                                <Grid RowDefinitions="Auto,*">
+                                    <Border Background="#292C32" Padding="10,8">
+                                        <TextBlock Text="{Binding Path}" FontWeight="SemiBold" />
+                                    </Border>
+                                    <controls:PatchView Grid.Row="1" FilePath="{Binding Path}" Patch="{Binding Content}"
+                                                        Height="{Binding PreviewHeight}" IsVisible="{Binding IsDiff}" />
+                                    <controls:CodeView Grid.Row="1" FilePath="{Binding Path}" Text="{Binding Content}"
+                                                       Height="{Binding PreviewHeight}" IsVisible="{Binding IsFile}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </UserControl>
