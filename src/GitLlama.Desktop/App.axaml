@@ -74,6 +74,7 @@
     </Application.Resources>
 
     <Application.Styles>
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
         <FluentTheme>
             <FluentTheme.Palettes>
                 <ColorPaletteResources x:Key="Dark" Accent="#7F9FC9" />

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Make file and diff previews read-only text editors with normal selection across lines, keyboard shortcuts, and Copy / Select all menus. Preserve syntax highlighting, diff colors and line numbers, and selective line/hunk staging.
 - Replace typed confirmation phrases with warning dialogs for resets, rebases, deletions, discarding file edits, LFS force unlocks, and pull request merges. Name the target and consequences, default destructive dialogs to Cancel, and reject confirmation if the repository or target changes.
 
 ## 0.3.2 - 2026-10-20

@@ -1927,19 +1927,12 @@ public sealed class WorkspaceTests
                     return frame is not null;
                 });
                 Dispatcher.UIThread.RunJobs();
-                Assert.All(
-                    viewer.GetVisualDescendants().OfType<ListBoxItem>(),
-                    item =>
-                    {
-                        Assert.Equal(new Thickness(0), item.Padding);
-                        Assert.Equal(22, item.Height);
-                    }
-                );
-                var highlighted = viewer
-                    .GetVisualDescendants()
-                    .OfType<TextBlock>()
-                    .SelectMany(text => text.Inlines?.OfType<Avalonia.Controls.Documents.Run>() ?? []);
-                Assert.Contains(highlighted, run => run.Text == "public" && run.Foreground is not null);
+                Assert.True(viewer.Editor.IsReadOnly);
+                Assert.True(viewer.Editor.TextArea.TextView.VisualLinesValid);
+                Assert.Contains(viewer.Editor.TextArea.TextView.LineTransformers,
+                    transformer => transformer is GitLlama.Desktop.Controls.SourceLineColorizer);
+                Assert.Contains(GitLlama.Desktop.Controls.PatchView.HighlightDiff(visible, "Test.cs").Values,
+                    line => line.Spans.Any(span => line.Text.Substring(span.Start, span.Length) == "public"));
                 SavePreview(previewWindow, "compact-code-diff.png");
             }
             finally
@@ -2219,6 +2212,62 @@ public sealed class WorkspaceTests
         }
     }
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SourceViewersSelectAndCopyAcrossLinesButRejectEdits(bool diff)
+    {
+        const string patch = "diff --git a/Test.cs b/Test.cs\n--- a/Test.cs\n+++ b/Test.cs\n@@ -1,2 +1,2 @@\n-old value\n+new value\n unchanged\n";
+        var code = new GitLlama.Desktop.Controls.CodeView { FilePath = "Test.cs", Text = "old value\nnew value\nunchanged" };
+        var changes = new GitLlama.Desktop.Controls.PatchView { FilePath = "Test.cs", Patch = patch };
+        var editor = diff ? changes.Editor : code.Editor;
+        var window = new Window { Width = 850, Height = 300, Content = diff ? changes : code };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            editor.TextArea.Focus();
+            Assert.True(editor.IsReadOnly);
+            var original = editor.Text;
+            var first = editor.Document.GetLineByNumber(diff ? 2 : 1);
+            var last = editor.Document.GetLineByNumber(diff ? 3 : 2);
+            var view = editor.TextArea.TextView;
+            var start = view.TranslatePoint(view.GetVisualPosition(
+                new AvaloniaEdit.TextViewPosition(first.LineNumber, 1), AvaloniaEdit.Rendering.VisualYPosition.LineMiddle)
+                - view.ScrollOffset, window)!.Value;
+            var end = view.TranslatePoint(view.GetVisualPosition(
+                new AvaloniaEdit.TextViewPosition(last.LineNumber, last.Length + 1), AvaloniaEdit.Rendering.VisualYPosition.LineMiddle)
+                - view.ScrollOffset, window)!.Value;
+            window.MouseDown(start, Avalonia.Input.MouseButton.Left);
+            window.MouseMove(end, Avalonia.Input.RawInputModifiers.LeftMouseButton);
+            window.MouseUp(end, Avalonia.Input.MouseButton.Left);
+            Assert.Equal("old value\nnew value", editor.SelectedText);
+            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.C, Avalonia.Input.RawInputModifiers.Control);
+            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.C, Avalonia.Input.RawInputModifiers.Control);
+            var clipboard = TopLevel.GetTopLevel(editor)!.Clipboard!;
+            Assert.Equal("old value\nnew value", (await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clipboard))?.Replace("\r\n", "\n"));
+            window.KeyTextInput("replaced");
+            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Delete, Avalonia.Input.RawInputModifiers.None);
+            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Delete, Avalonia.Input.RawInputModifiers.None);
+            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.V, Avalonia.Input.RawInputModifiers.Control);
+            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.V, Avalonia.Input.RawInputModifiers.Control);
+            await Task.Yield();
+            Assert.Equal(original, editor.Text);
+            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.A, Avalonia.Input.RawInputModifiers.Control);
+            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.A, Avalonia.Input.RawInputModifiers.Control);
+            Assert.Equal(original, editor.SelectedText);
+            if (diff)
+            {
+                editor.TextArea.Caret.Line = 3;
+                Assert.Equal("Added", changes.SelectedLine?.Kind);
+                changes.SelectedLine = GitLlama.Desktop.Controls.PatchView.DisplayLines(patch).Single(line => line.Kind == "Deleted");
+                Assert.Equal(2, editor.TextArea.Caret.Line);
+            }
+            SavePreview(window, diff ? "selectable-diff.png" : "selectable-file.png");
+        }
+        finally { window.Close(); }
+    }
+
     [AvaloniaFact]
     public async Task LibraryHighlightingHandlesMultilineLanguagesAndIndependentDiffSides()
     {
@@ -2274,7 +2323,8 @@ public sealed class WorkspaceTests
         try
         {
             window.Show();
-            await WaitUntilAsync(() => window.GetVisualDescendants().OfType<TextBlock>().Any());
+            await WaitUntilAsync(() => window.GetVisualDescendants().OfType<AvaloniaEdit.TextEditor>()
+                .Any(editor => editor.TextArea.TextView.VisualLinesValid));
             SavePreview(window, "library-syntax-highlighting.png");
         }
         finally

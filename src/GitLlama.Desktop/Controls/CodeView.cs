@@ -27,45 +27,16 @@ public sealed class CodeView : UserControl
         get => GetValue(FilePathProperty);
         set => SetValue(FilePathProperty, value);
     }
-    private readonly ListBox _lines;
-
-    private sealed record CodeLine(int Number, SourceLine Source);
+    private readonly AvaloniaEdit.TextEditor _editor;
+    private SourceLine[] _highlighted = [];
+    internal AvaloniaEdit.TextEditor Editor => _editor;
 
     public CodeView()
     {
-        _lines = new ListBox
-        {
-            FontFamily = FontFamily.Parse("Consolas, Menlo, monospace"),
-            FontSize = 13,
-            ItemTemplate = new FuncDataTemplate<CodeLine>(
-                (line, _) =>
-                {
-                    var grid = new Grid
-                    {
-                        ColumnDefinitions = new ColumnDefinitions("55,*"),
-                        ColumnSpacing = 12,
-                        Height = 22,
-                        Margin = new Thickness(8, 0),
-                    };
-                    var number = new TextBlock
-                    {
-                        Text = line?.Number.ToString(),
-                        Foreground = Brush.Parse("#80848E"),
-                        TextAlignment = TextAlignment.Right,
-                        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                    };
-                    var code = Highlight(line?.Source ?? new SourceLine("", []));
-                    code.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
-                    grid.Children.Add(number);
-                    Grid.SetColumn(code, 1);
-                    grid.Children.Add(code);
-                    return grid;
-                }
-            ),
-        };
-        CompactRows(_lines);
-        ScrollViewer.SetHorizontalScrollBarVisibility(_lines, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
-        Content = _lines;
+        _editor = ReadOnlySourceEditor.Create();
+        _editor.TextArea.TextView.LineTransformers.Add(new SourceLineColorizer(number =>
+            number <= _highlighted.Length ? _highlighted[number - 1] : null));
+        Content = _editor;
     }
 
     internal static void CompactRows(ListBox list)
@@ -117,12 +88,11 @@ public sealed class CodeView : UserControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (_lines is not null && (change.Property == TextProperty || change.Property == FilePathProperty))
+        if (_editor is not null && (change.Property == TextProperty || change.Property == FilePathProperty))
         {
-            _lines.ItemsSource = SourceHighlighter
-                .Highlight(Text ?? "", FilePath)
-                .Select((source, index) => new CodeLine(index + 1, source))
-                .ToArray();
+            _highlighted = SourceHighlighter.Highlight(Text ?? "", FilePath);
+            if (_editor.Text != (Text ?? "")) _editor.Text = Text ?? "";
+            _editor.TextArea.TextView.Redraw();
         }
     }
 }
