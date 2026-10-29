@@ -83,7 +83,8 @@ public partial class MainWindowViewModel : IDisposable
 
             _watcher = new RepositoryWatcher(
                 roots,
-                () => Dispatcher.UIThread.Post(() => _ = RefreshFromWatcherAsync(repo.Path))
+                () => Dispatcher.UIThread.Post(() => _ = RefreshFromWatcherAsync(repo.Path)),
+                gitDirectories: [roots.Last()]
             );
             // Reconcile edits that occurred while the native metadata/watchers were being opened.
             await RefreshFromWatcherAsync(repo.Path);

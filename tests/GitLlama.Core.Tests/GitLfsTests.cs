@@ -25,6 +25,42 @@ public sealed class GitLfsTests : IDisposable
     }
 
     [Fact]
+    public async Task StatusRefreshDoesNotFeedBackFromLfsWritesIntoAnotherRefresh()
+    {
+        await new GitLfsService().TrackAsync(_path, "*.bin");
+        File.WriteAllBytes(Path.Combine(_path, "big.bin"), _content);
+        using (var repo = new Repository(_path))
+        {
+            Commands.Stage(repo, [".gitattributes", "big.bin"]);
+            Commit(repo, "Add LFS content");
+        }
+        var cacheWrites = 0;
+        var callbacks = 0;
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var rawLfsWatcher = new FileSystemWatcher(Path.Combine(_path, ".git", "lfs")) { IncludeSubdirectories = true };
+        rawLfsWatcher.Created += (_, _) => Interlocked.Increment(ref cacheWrites);
+        rawLfsWatcher.Changed += (_, _) => Interlocked.Increment(ref cacheWrites);
+        rawLfsWatcher.EnableRaisingEvents = true;
+        using var watcher = new GitLlama.Infrastructure.RepositoryWatcher([_path, Path.Combine(_path, ".git")], () =>
+        {
+            Interlocked.Increment(ref callbacks);
+            try
+            {
+                new LibGitOverviewReader().ReadOverviewAsync(_path).GetAwaiter().GetResult();
+                completed.TrySetResult();
+            }
+            catch (Exception e) { completed.TrySetException(e); }
+        });
+        var edited = _content.ToArray();
+        edited[0] ^= 0x5a;
+        File.WriteAllBytes(Path.Combine(_path, "big.bin"), edited);
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await Task.Delay(1600);
+        Assert.True(Volatile.Read(ref cacheWrites) > 0, "The status refresh must exercise real LFS cache writes.");
+        Assert.Equal(1, Volatile.Read(ref callbacks));
+    }
+
+    [Fact]
     public void ParsesDownloadedAndPointerOnlyFiles()
     {
         var files = GitLfsService.ParseFiles("4d7a2146 * Art/Hero.psd\n9b2c11aa - Audio/Theme song.wav\n");

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.4 - 2026-10-29
+
+- Stop automatic refreshes from reacting to Git LFS temporary/cache writes, Git object writes, logs and lock files. Preserve refreshes for real worktree edits, completed index updates, refs, configuration and operation state, preventing LFS filtering from repeatedly triggering itself.
+
 ## 0.3.3 - 2026-10-26
 
 - Handle Copy and Select all directly in read-only viewers using platform gestures, await clipboard writes, and test both Control and Command shortcuts.
