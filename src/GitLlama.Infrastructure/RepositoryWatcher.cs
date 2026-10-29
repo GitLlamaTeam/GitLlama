@@ -88,7 +88,7 @@ public sealed class RepositoryWatcher : IDisposable
     }
 
     private static bool MetadataDirectoryWrite(string path, WatcherChangeTypes change) =>
-        change is WatcherChangeTypes.Created or WatcherChangeTypes.Changed && Directory.Exists(path);
+        change == WatcherChangeTypes.Changed && Directory.Exists(path);
 
     private static bool RelevantGitMetadata(string path)
     {
@@ -96,7 +96,10 @@ public sealed class RepositoryWatcher : IDisposable
         if (path.EndsWith(".lock", StringComparison.OrdinalIgnoreCase)) return false;
         var parts = path.Split('/');
         if (parts[0] is "refs" or "rebase-merge" or "rebase-apply" or "sequencer") return true;
-        if (parts[0] == "info") return path is "info/attributes" or "info/exclude" or "info/sparse-checkout";
+        // On Linux a file created immediately inside a new directory can predate the recursive watch.
+        // Reconcile on relevant directory creation too; changes to existing cache directories stay ignored.
+        if (parts[0] == "info") return path is "info" or "info/attributes" or "info/exclude" or "info/sparse-checkout";
+        if (parts[0] is "modules" or "worktrees" && parts.Length <= 2) return true;
         if (parts[0] == "worktrees" && parts.Length > 2) return RelevantGitMetadata(string.Join('/', parts.Skip(2)));
         if (parts[0] == "modules" && parts.Length > 2)
         {

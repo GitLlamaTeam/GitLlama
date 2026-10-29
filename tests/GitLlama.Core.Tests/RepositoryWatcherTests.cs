@@ -11,6 +11,9 @@ public sealed class RepositoryWatcherTests : IDisposable
     public RepositoryWatcherTests()
     {
         Directory.CreateDirectory(Path.Combine(Git, "objects"));
+        Directory.CreateDirectory(Path.Combine(Git, "refs", "heads"));
+        Directory.CreateDirectory(Path.Combine(Git, "modules", "plugin", "objects"));
+        File.WriteAllText(Path.Combine(Git, "modules", "plugin", "HEAD"), "ref: refs/heads/main\n");
         File.WriteAllText(Path.Combine(Git, "HEAD"), "ref: refs/heads/main\n");
     }
 
