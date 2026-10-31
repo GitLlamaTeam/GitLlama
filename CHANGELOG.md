@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make local and remote branch switches recover from partial checkout failures. Check affected files for locks before checkout, preserve their exact working content and staged index, and restore deleted/replaced paths and the original branch when checkout fails or is cancelled. Keep recovery copies and report their location if another lock or filesystem error also prevents restoration.
+
 - Stop read-only status, file previews, comparisons and submodule refreshes from writing full-size LFS temporary objects. Hash large files in memory to calculate their pointers, while preserving normal LFS storage during staging and custom extension filtering.
 
 ## 0.3.4 - 2026-10-29

@@ -42,8 +42,15 @@ public sealed class GitBranchService
                 var branch = repository.CreateBranch(branchName);
                 if (checkout)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    Commands.Checkout(repository, branch);
+                    try
+                    {
+                        GitCheckoutTransaction.Checkout(repository, branch, cancellationToken);
+                    }
+                    catch
+                    {
+                        if (repository.Head.CanonicalName != branch.CanonicalName) repository.Branches.Remove(branch);
+                        throw;
+                    }
                 }
 
                 return branch.FriendlyName;
@@ -82,11 +89,7 @@ public sealed class GitBranchService
 
                 cancellationToken.ThrowIfCancellationRequested();
                 // Do not allow checkout to overwrite local work, including untracked files.
-                Commands.Checkout(
-                    repository,
-                    branch,
-                    new CheckoutOptions { CheckoutModifiers = CheckoutModifiers.None }
-                );
+                GitCheckoutTransaction.Checkout(repository, branch, cancellationToken);
                 return repository.Head.FriendlyName;
             },
             cancellationToken
@@ -153,11 +156,7 @@ public sealed class GitBranchService
                 {
                     repository.Branches.Update(local, updater => updater.TrackedBranch = remote.CanonicalName);
                     cancellationToken.ThrowIfCancellationRequested();
-                    Commands.Checkout(
-                        repository,
-                        local,
-                        new CheckoutOptions { CheckoutModifiers = CheckoutModifiers.None }
-                    );
+                    GitCheckoutTransaction.Checkout(repository, local, cancellationToken);
                     return repository.Head.FriendlyName;
                 }
                 catch
