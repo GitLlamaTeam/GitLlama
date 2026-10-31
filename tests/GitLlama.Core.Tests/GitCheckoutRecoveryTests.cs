@@ -215,6 +215,59 @@ public sealed class GitCheckoutRecoveryTests : IDisposable
     }
 
     [Fact]
+    [Trait("Feature", "Untracked checkout")]
+    public async Task RemoteCheckoutCarriesUnrelatedLocalChangesInsteadOfRequiringACleanTree()
+    {
+        using (var repo = new Repository(_path))
+        {
+            repo.Network.Remotes.Add("origin", "https://example.invalid/repository.git");
+            repo.Refs.Add("refs/remotes/origin/target", repo.Branches["target"].Tip.Id);
+        }
+
+        AddLocalWork();
+        Write("new-dir/local-new.txt", "unstaged addition beside a target file");
+        await new GitBranchService().CheckoutRemoteBranchAsync(_path, "origin", "target", "from-remote");
+        using var result = new Repository(_path);
+        Assert.Equal("from-remote", result.Head.FriendlyName);
+        Assert.True(result.Head.IsTracking);
+        Assert.Equal("unstaged", File.ReadAllText(Path.Combine(_path, "local.txt")));
+        Assert.Equal("staged", result.Lookup<Blob>(result.Index["local.txt"].Id).GetContentText());
+        Assert.Equal("unstaged addition beside a target file", File.ReadAllText(Path.Combine(_path, "new-dir", "local-new.txt")));
+        Assert.Null(result.Index["new-dir/local-new.txt"]);
+        Assert.Equal("untracked", File.ReadAllText(Path.Combine(_path, "untracked.txt")));
+        Assert.Equal("ignored", File.ReadAllText(Path.Combine(_path, "local.ignored")));
+        AssertNoBackups();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Feature", "Untracked checkout")]
+    public async Task UnstagedAdditionAtTargetPathBlocksCheckoutWithoutLosingLocalFiles(bool remote)
+    {
+        using (var repo = new Repository(_path))
+        {
+            repo.Network.Remotes.Add("origin", "https://example.invalid/repository.git");
+            repo.Refs.Add("refs/remotes/origin/target", repo.Branches["target"].Tip.Id);
+        }
+
+        AddLocalWork();
+        Write("new-dir/added.txt", "my unstaged file must never be replaced");
+        var before = Files();
+        var index = File.ReadAllBytes(Path.Combine(_path, ".git", "index"));
+        var service = new GitBranchService();
+        await Assert.ThrowsAsync<IOException>(() => remote
+            ? service.CheckoutRemoteBranchAsync(_path, "origin", "target", "from-remote")
+            : service.CheckoutAsync(_path, "target"));
+        Assert.Equal(before, Files());
+        Assert.Equal(index, File.ReadAllBytes(Path.Combine(_path, ".git", "index")));
+        using var reopened = new Repository(_path);
+        Assert.Equal(_original, reopened.Head.FriendlyName);
+        Assert.Null(reopened.Branches["from-remote"]);
+        AssertNoBackups();
+    }
+
+    [Fact]
     public async Task SuccessfulCheckoutPreservesUnrelatedStagedUnstagedIgnoredAndUntrackedFiles()
     {
         AddLocalWork();

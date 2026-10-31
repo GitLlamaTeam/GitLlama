@@ -143,13 +143,6 @@ public sealed class GitBranchService
                     throw new InvalidOperationException($"Local branch '{localBranchName}' already exists.");
                 }
 
-                if (repository.RetrieveStatus().IsDirty)
-                {
-                    throw new InvalidOperationException(
-                        "Commit or stash local changes before checking out a remote branch."
-                    );
-                }
-
                 cancellationToken.ThrowIfCancellationRequested();
                 var local = repository.CreateBranch(localBranchName, remote.Tip);
                 try
