@@ -17,6 +17,7 @@ public sealed class GitFileComparisonService
             throw new ArgumentException("Choose a repository-relative file path.", nameof(path));
         path = path.Replace('\\', '/');
         using var repo = new Repository(repositoryPath);
+        using var lfsRead = GitLfsFilter.ReadOnly(repo);
         var left = repo.Lookup<Commit>(leftSha) ?? throw new ArgumentException("The selected revision was not found.");
         var right = rightSha is null ? null
             : repo.Lookup<Commit>(rightSha) ?? throw new ArgumentException("The comparison revision was not found.");

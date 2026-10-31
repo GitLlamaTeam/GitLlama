@@ -56,8 +56,91 @@ public sealed class GitLfsTests : IDisposable
         File.WriteAllBytes(Path.Combine(_path, "big.bin"), edited);
         await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
         await Task.Delay(1600);
-        Assert.True(Volatile.Read(ref cacheWrites) > 0, "The status refresh must exercise real LFS cache writes.");
+        Assert.Equal(0, Volatile.Read(ref cacheWrites));
         Assert.Equal(1, Volatile.Read(ref callbacks));
+    }
+
+    [Fact]
+    public async Task RepeatedStatusAndPreviewsDoNotWriteLargeLfsObjectsButStagingStillDoes()
+    {
+        await new GitLfsService().TrackAsync(_path, "*.bin");
+        var file = Path.Combine(_path, "big.bin");
+        var original = string.Concat(Enumerable.Repeat("original line\n", 16000));
+        File.WriteAllText(file, original, new UTF8Encoding(false));
+        string sha;
+        using (var repo = new Repository(_path))
+        {
+            Commands.Stage(repo, [".gitattributes", "big.bin"]);
+            Commit(repo, "Add LFS text");
+            sha = repo.Head.Tip.Sha;
+        }
+        GitLfsFilter.Shutdown();
+        var writes = 0;
+        using var watcher = new FileSystemWatcher(Path.Combine(_path, ".git", "lfs")) { IncludeSubdirectories = true };
+        watcher.Created += (_, _) => Interlocked.Increment(ref writes);
+        watcher.Changed += (_, _) => Interlocked.Increment(ref writes);
+        watcher.EnableRaisingEvents = true;
+        // Force clean-filter execution even when the content is unchanged.
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(5));
+        Assert.Empty((await new LibGitOverviewReader().ReadOverviewAsync(_path)).Changes);
+        var edited = original + "new line\n";
+        File.WriteAllText(file, edited, new UTF8Encoding(false));
+        var oid = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(edited))).ToLowerInvariant();
+        var pointer = $"version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize {Encoding.UTF8.GetByteCount(edited)}\n";
+        var objectPath = Path.Combine(_path, ".git", "lfs", "objects", oid[..2], oid[2..4], oid);
+        for (var n = 0; n < 4; n++)
+        {
+            var overview = await new LibGitOverviewReader().ReadOverviewAsync(_path);
+            Assert.Contains(overview.Changes, change => change.Path == "big.bin" && change.State.Contains("Modified"));
+            Assert.Contains(oid, (await new GitDiffService().GetFileDiffAsync(_path, "big.bin")).UnstagedPatch);
+            Assert.Contains(await new GitFileBrowserService().ListAsync(_path), change => change.Path == "big.bin" && change.Status.Contains("Modified"));
+            Assert.Contains(oid, (await new GitFileComparisonService().GetAsync(_path, "big.bin", sha)).Patch);
+            Assert.Contains((await new GitLfsService().GetStatusAsync(_path)).Files, entry => entry.Path == "big.bin");
+        }
+        await Task.Delay(300);
+        Assert.Equal(0, Volatile.Read(ref writes));
+        Assert.Equal(0, GitLfsFilter.RunningProcesses);
+        Assert.False(File.Exists(objectPath));
+
+        using (var repo = new Repository(_path))
+        {
+            Commands.Stage(repo, "big.bin");
+            Assert.Equal(pointer, repo.Lookup<Blob>(repo.Index["big.bin"].Id).GetContentText());
+        }
+        Assert.True(File.Exists(objectPath));
+        Assert.Equal(Encoding.UTF8.GetBytes(edited), File.ReadAllBytes(objectPath));
+        Assert.Empty((await new GitDiffService().GetFileDiffAsync(_path, "big.bin")).UnstagedPatch);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1023)]
+    [InlineData(1024)]
+    [InlineData(1025)]
+    public async Task ReadOnlyCleanMatchesNativeLfsAtPointerSizeBoundary(int size)
+    {
+        await new GitLfsService().TrackAsync(_path, "*.bin");
+        var file = Path.Combine(_path, "small.bin");
+        File.WriteAllBytes(file, Enumerable.Repeat((byte)'x', size).ToArray());
+        string pointer;
+        using (var repo = new Repository(_path))
+        {
+            Commands.Stage(repo, [".gitattributes", "small.bin"]);
+            Commit(repo, "Add LFS content");
+            pointer = repo.Lookup<Blob>(repo.Index["small.bin"].Id).GetContentText();
+        }
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(5));
+        Assert.Empty((await new LibGitOverviewReader().ReadOverviewAsync(_path)).Changes);
+        Assert.Empty((await new GitDiffService().GetFileDiffAsync(_path, "small.bin")).UnstagedPatch);
+        // A missing download must remain a pointer, never a pointer to the pointer's bytes.
+        File.WriteAllText(file, pointer, new UTF8Encoding(false));
+        using (var repo = new Repository(_path))
+        {
+            // libgit2 may report a stat-size mismatch without filtering; preserve native status semantics.
+            var nativeModified = repo.RetrieveStatus("small.bin") != FileStatus.Unaltered;
+            Assert.Equal(nativeModified, (await new LibGitOverviewReader().ReadOverviewAsync(_path)).Changes.Any());
+        }
+        Assert.Empty((await new GitDiffService().GetFileDiffAsync(_path, "small.bin")).UnstagedPatch);
     }
 
     [Fact]

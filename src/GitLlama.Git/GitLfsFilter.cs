@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using LibGit2Sharp;
 
@@ -16,6 +18,51 @@ namespace GitLlama.Git;
 /// </remarks>
 public sealed class GitLfsFilter : Filter
 {
+    [ThreadStatic]
+    private static ReadOnlyScope? _readOnlyScope;
+
+    /// <summary>
+    /// Status and previews need the pointer, not a second on-disk copy of each large file.
+    /// Keep this scope on the synchronous thread making the libgit2 calls. Actual staging must
+    /// run outside it so git-lfs stores the objects that will later be uploaded.
+    /// Custom LFS extensions still use git-lfs because they can transform the content.
+    /// </summary>
+    internal static IDisposable ReadOnly(Repository repository) => new ReadOnlyScope(repository);
+
+    private sealed class ReadOnlyScope : IDisposable
+    {
+        private readonly ReadOnlyScope? _previous = _readOnlyScope;
+        private readonly Dictionary<string, bool> _repositories = new(OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
+        public ReadOnlyScope(Repository repository)
+        {
+            if (!repository.Info.IsBare)
+            {
+                _repositories[Path.GetFullPath(repository.Info.WorkingDirectory)] = SupportsHashing(repository);
+            }
+
+            _readOnlyScope = this;
+        }
+
+        public bool CanHash(string root)
+        {
+            root = Path.GetFullPath(root);
+            if (!_repositories.TryGetValue(root, out var enabled))
+            {
+                // A parent status read can also filter files inside its submodules.
+                using var repository = new Repository(root);
+                _repositories[root] = enabled = SupportsHashing(repository);
+            }
+            return enabled;
+        }
+
+        private static bool SupportsHashing(Repository repository) => !repository.Config.Any(
+            entry => entry.Key.StartsWith("lfs.extension.", StringComparison.OrdinalIgnoreCase));
+
+        public void Dispose() => _readOnlyScope = _previous;
+    }
+
     private static readonly TimeSpan GateTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(2);
     private static readonly Lazy<GitLfsFilter> Instance = new(() =>
@@ -59,12 +106,16 @@ public sealed class GitLfsFilter : Filter
 
     protected override void Create(string path, string root, FilterMode mode)
     {
+        var hashOnly = mode == FilterMode.Clean && (_readOnlyScope?.CanHash(root) ?? false);
         var gate = Enter();
-        var session = new Session(mode == FilterMode.Clean, path, gate);
+        var session = new Session(mode == FilterMode.Clean, path, root, gate, hashOnly);
         try
         {
-            session.Process = Acquire(root);
-            session.Process.Begin(session.IsClean ? "clean" : "smudge", path);
+            if (session.Hash is null)
+            {
+                session.Process = Acquire(root);
+                session.Process.Begin(session.IsClean ? "clean" : "smudge", path);
+            }
         }
         catch (System.ComponentModel.Win32Exception) when (!session.IsClean)
         {
@@ -120,6 +171,24 @@ public sealed class GitLfsFilter : Filter
 
     private void Finish(Session session, Stream output)
     {
+        if (session.Hash is not null)
+        {
+            // LFS pointers are at most 1024 bytes. Delegate small inputs to git-lfs so
+            // existing pointers, including extensions and older versions, retain its semantics.
+            if (session.Length > 1024)
+            {
+                var oid = Convert.ToHexString(session.Hash.GetHashAndReset()).ToLowerInvariant();
+                var pointer = $"version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize {session.Length.ToString(CultureInfo.InvariantCulture)}\n";
+                output.Write(Encoding.UTF8.GetBytes(pointer));
+                return;
+            }
+
+            session.Process = Acquire(session.Root);
+            session.Process.Begin("clean", session.Path);
+            session.Pointer.Position = 0;
+            session.Process.WriteContent(session.Pointer);
+        }
+
         if (session.Process is not { } process)
         {
             WritePointer(session, output);
@@ -174,6 +243,24 @@ public sealed class GitLfsFilter : Filter
         {
             if (session.IsClean)
             {
+                if (session.Hash is not null)
+                {
+                    var buffer = new byte[65536];
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        session.Hash.AppendData(buffer, 0, read);
+                        var keep = (int)Math.Min(read, 1024 - session.Pointer.Length);
+                        if (keep > 0)
+                        {
+                            session.Pointer.Write(buffer, 0, keep);
+                        }
+
+                        session.Length += read;
+                    }
+                    return;
+                }
+
                 session.Process!.WriteContent(input);
                 return;
             }
@@ -282,6 +369,8 @@ public sealed class GitLfsFilter : Filter
                 stale.Released = true;
                 _active = null;
                 DiscardLocked(stale.Process);
+                stale.Hash?.Dispose();
+                stale.Pointer.Dispose();
                 return stale.Gate;
             }
         }
@@ -330,6 +419,8 @@ public sealed class GitLfsFilter : Filter
         }
 
         session.Gate.Release();
+        session.Hash?.Dispose();
+        session.Pointer.Dispose();
     }
 
     private Session? Current()
@@ -340,10 +431,14 @@ public sealed class GitLfsFilter : Filter
         }
     }
 
-    private sealed class Session(bool isClean, string path, SemaphoreSlim gate)
+    private sealed class Session(bool isClean, string path, string root, SemaphoreSlim gate, bool hashOnly)
     {
         public bool IsClean { get; } = isClean;
         public string Path { get; } = path;
+        public string Root { get; } = root;
+        public IncrementalHash? Hash { get; } = hashOnly
+            ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256) : null;
+        public long Length { get; set; }
         public SemaphoreSlim Gate { get; } = gate;
         public int Thread { get; } = Environment.CurrentManagedThreadId;
         public bool Released { get; set; }

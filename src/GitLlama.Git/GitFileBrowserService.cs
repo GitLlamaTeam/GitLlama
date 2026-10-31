@@ -69,6 +69,7 @@ public sealed class GitFileBrowserService
             () =>
             {
                 using var repo = new Repository(path);
+                using var lfsRead = GitLfsFilter.ReadOnly(repo);
                 if (repo.Info.IsBare)
                 {
                     return [];

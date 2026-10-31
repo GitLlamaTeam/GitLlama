@@ -17,6 +17,7 @@ public sealed class GitDiffService
                 ArgumentException.ThrowIfNullOrWhiteSpace(repositoryPath);
                 ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
                 using var repository = new Repository(repositoryPath);
+                using var lfsRead = GitLfsFilter.ReadOnly(repository);
                 if (repository.Info.IsBare)
                 {
                     throw new InvalidOperationException("A bare repository has no working tree.");

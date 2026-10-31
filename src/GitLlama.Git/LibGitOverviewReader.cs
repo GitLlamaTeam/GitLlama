@@ -12,6 +12,7 @@ public sealed class LibGitOverviewReader : IRepositoryOverviewReader
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 using var repo = new Repository(Path.GetFullPath(path));
+                using var lfsRead = GitLfsFilter.ReadOnly(repo);
                 var commits = new List<CommitSummary>();
                 foreach (var commit in repo.Commits.Take(100))
                 {

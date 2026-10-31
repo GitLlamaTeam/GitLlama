@@ -50,6 +50,7 @@ public sealed class GitSubmoduleService
             () =>
             {
                 using var repo = new Repository(path);
+                using var lfsRead = GitLfsFilter.ReadOnly(repo);
                 return repo
                     .Submodules.Select(module => (module, status: module.RetrieveStatus()))
                     // A submodule removed but not yet committed is only in HEAD; don't list it.

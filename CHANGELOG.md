@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop read-only status, file previews, comparisons and submodule refreshes from writing full-size LFS temporary objects. Hash large files in memory to calculate their pointers, while preserving normal LFS storage during staging and custom extension filtering.
+
 ## 0.3.4 - 2026-10-29
 
 - Stop automatic refreshes from reacting to Git LFS temporary/cache writes, Git object writes, logs and lock files. Preserve refreshes for real worktree edits, completed index updates, refs, configuration and operation state, preventing LFS filtering from repeatedly triggering itself.
