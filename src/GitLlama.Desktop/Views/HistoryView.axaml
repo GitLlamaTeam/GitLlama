@@ -1,7 +1,28 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:GitLlama.Desktop.Controls"
+             xmlns:views="clr-namespace:GitLlama.Desktop.Views"
              x:Class="GitLlama.Desktop.Views.HistoryView">
+    <UserControl.Styles>
+        <Style Selector="GridSplitter.history-column">
+            <Setter Property="ResizeDirection" Value="Columns" />
+            <Setter Property="ResizeBehavior" Value="CurrentAndNext" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Width" Value="8" />
+            <Setter Property="Background" Value="#41454D" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="Transparent">
+                        <Border Width="1" Margin="0,4" HorizontalAlignment="Center"
+                                Background="{TemplateBinding Background}" IsHitTestVisible="False" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="GridSplitter.history-column:pointerover, GridSplitter.history-column:focus-visible">
+            <Setter Property="Background" Value="#6D8EB8" />
+        </Style>
+    </UserControl.Styles>
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Background="{StaticResource SurfaceBrush}">
         <Grid Margin="8"
               ColumnDefinitions="Auto,*,Auto"
@@ -47,25 +68,36 @@
         <Border Grid.Row="2"
                 BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="0,1"
-                Padding="0,7"
                 Background="#252526">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Left"
-                           Text="Graph"
-                           Width="{Binding HistoryGraphWidth}"
-                           Padding="8,0" />
-
-                <Grid ColumnDefinitions="*,155,112" Margin="8,0">
-                    <TextBlock Text="Message" />
-                    <TextBlock Grid.Column="1" Text="Author" />
-                    <TextBlock Grid.Column="2" Text="Date" />
-                </Grid>
-            </DockPanel>
+            <Grid x:Name="HistoryColumnHeader" HorizontalAlignment="Left"
+                  Width="{Binding #HistoryList.Scroll.Viewport.Width}"
+                  ClipToBounds="True">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="84*" MinWidth="48" />
+                    <ColumnDefinition Width="480*" MinWidth="80" />
+                    <ColumnDefinition Width="155*" MinWidth="64" />
+                    <ColumnDefinition Width="112*" MinWidth="64" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Graph" Margin="8,7,8,7" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="Message" Margin="8,7,8,7" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" Text="Author" Margin="8,7,8,7" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="3" Text="Date" Margin="8,7,8,7" TextTrimming="CharacterEllipsis" />
+                <GridSplitter x:Name="HistoryGraphDivider" Classes="history-column"
+                              AutomationProperties.Name="Resize Graph and Message columns"
+                              ToolTip.Tip="Resize Graph and Message columns" />
+                <GridSplitter x:Name="HistoryMessageDivider" Grid.Column="1" Classes="history-column"
+                              AutomationProperties.Name="Resize Message and Author columns"
+                              ToolTip.Tip="Resize Message and Author columns" />
+                <GridSplitter x:Name="HistoryAuthorDivider" Grid.Column="2" Classes="history-column"
+                              AutomationProperties.Name="Resize Author and Date columns"
+                              ToolTip.Tip="Resize Author and Date columns" />
+            </Grid>
         </Border>
 
         <ListBox x:Name="HistoryList"
                  Grid.Row="3"
                  Classes="history"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  ItemsSource="{Binding HistoryRows}"
                  SelectedItem="{Binding SelectedHistoryRow}"
                  ContextRequested="CommitContextRequested">
@@ -74,81 +106,83 @@
                     <Border BorderBrush="#2D2D30"
                             BorderThickness="0,0,0,1"
                             ToolTip.Tip="{Binding Sha}">
-                        <DockPanel Height="30">
-                            <controls:GraphCell DockPanel.Dock="Left"
-                                                Width="{Binding GraphWidth}"
-                                                Row="{Binding}" />
+                        <Grid Height="30" ClipToBounds="True">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition MinWidth="48" Width="{Binding $parent[views:HistoryView].HistoryColumns[0].Width}" />
+                                <ColumnDefinition MinWidth="80" Width="{Binding $parent[views:HistoryView].HistoryColumns[1].Width}" />
+                                <ColumnDefinition MinWidth="64" Width="{Binding $parent[views:HistoryView].HistoryColumns[2].Width}" />
+                                <ColumnDefinition MinWidth="64" Width="{Binding $parent[views:HistoryView].HistoryColumns[3].Width}" />
+                            </Grid.ColumnDefinitions>
+                            <controls:GraphCell Row="{Binding}" ClipToBounds="True" />
+                            <DockPanel Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center" ClipToBounds="True">
+                                <ItemsControl DockPanel.Dock="Right"
+                                              ItemsSource="{Binding ReferenceLabels}"
+                                              Margin="6,0,0,0"
+                                              MaxWidth="200">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="4" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
 
-                            <Grid ColumnDefinitions="*,155,112"
-                                  Margin="8,0"
-                                  VerticalAlignment="Center">
-                                <DockPanel Margin="0,0,12,0">
-                                    <ItemsControl DockPanel.Dock="Right"
-                                                  ItemsSource="{Binding ReferenceLabels}"
-                                                  Margin="6,0,0,0"
-                                                  MaxWidth="200">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" Spacing="4" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{Binding Background}"
+                                                    BorderBrush="{Binding BorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="3"
+                                                    Padding="5,2"
+                                                    ToolTip.Tip="{Binding ToolTip}">
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontSize="10"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="120" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Background="{Binding Background}"
-                                                        BorderBrush="{Binding BorderBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="3"
-                                                        Padding="5,2"
-                                                        ToolTip.Tip="{Binding ToolTip}">
-                                                    <TextBlock Text="{Binding DisplayName}"
-                                                               FontSize="10"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               MaxWidth="120" />
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                <TextBlock Text="{Binding Subject}"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
 
-                                    <TextBlock Text="{Binding Subject}"
-                                               TextTrimming="CharacterEllipsis"
-                                               VerticalAlignment="Center" />
-                                </DockPanel>
+                            <DockPanel Grid.Column="2" Margin="8,0,8,0" VerticalAlignment="Center" ClipToBounds="True">
+                                <Border DockPanel.Dock="Left"
+                                        Width="18"
+                                        Height="18"
+                                        CornerRadius="9"
+                                        ClipToBounds="True"
+                                        Margin="0,0,6,0"
+                                        Background="{Binding AuthorAvatar.Background}"
+                                        VerticalAlignment="Center">
+                                    <Panel>
+                                        <TextBlock Text="{Binding AuthorAvatar.Initials}"
+                                                   FontSize="8"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="White"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
 
-                                <DockPanel Grid.Column="1" Margin="0,0,8,0">
-                                    <Border DockPanel.Dock="Left"
-                                            Width="18"
-                                            Height="18"
-                                            CornerRadius="9"
-                                            ClipToBounds="True"
-                                            Margin="0,0,6,0"
-                                            Background="{Binding AuthorAvatar.Background}"
-                                            VerticalAlignment="Center">
-                                        <Panel>
-                                            <TextBlock Text="{Binding AuthorAvatar.Initials}"
-                                                       FontSize="8"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="White"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center" />
+                                        <Image Source="{Binding AuthorAvatar.Image}" Stretch="UniformToFill" />
+                                    </Panel>
+                                </Border>
 
-                                            <Image Source="{Binding AuthorAvatar.Image}" Stretch="UniformToFill" />
-                                        </Panel>
-                                    </Border>
-
-                                    <TextBlock Text="{Binding Author}"
-                                               TextTrimming="CharacterEllipsis"
-                                               Classes="muted"
-                                               VerticalAlignment="Center" />
-                                </DockPanel>
-
-                                <TextBlock Grid.Column="2"
-                                           Text="{Binding Date}"
-                                           FontSize="11"
+                                <TextBlock Text="{Binding Author}"
+                                           TextTrimming="CharacterEllipsis"
                                            Classes="muted"
-                                           ToolTip.Tip="{Binding FullDate}" />
-                            </Grid>
-                        </DockPanel>
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <TextBlock Grid.Column="3"
+                                       Text="{Binding Date}"
+                                       Margin="8,0,8,0"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       FontSize="11"
+                                       Classes="muted"
+                                       ToolTip.Tip="{Binding FullDate}" />
+                        </Grid>
                     </Border>
                 </DataTemplate>
             </ListBox.ItemTemplate>

@@ -13,10 +13,25 @@ namespace GitLlama.Desktop.Views;
 public partial class HistoryView : UserControl
 {
     private MainWindowViewModel? _historyWorkspace;
+    private bool _settingHistoryColumnDefaults;
+    private bool _historyColumnsResized;
+
+    public ColumnDefinitions HistoryColumns => this.FindControl<Grid>("HistoryColumnHeader")!.ColumnDefinitions;
 
     public HistoryView()
     {
         AvaloniaXamlLoader.Load(this);
+        this.FindControl<Grid>("HistoryColumnHeader")!.SizeChanged += (_, _) => UpdateHistoryColumnDefaults();
+        foreach (var column in HistoryColumns)
+        {
+            column.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == ColumnDefinition.WidthProperty && !_settingHistoryColumnDefaults)
+                {
+                    _historyColumnsResized = true;
+                }
+            };
+        }
         DataContextChanged += (_, _) => ConnectHistoryNavigation();
         AttachedToVisualTree += (_, _) => ConnectHistoryNavigation();
         DetachedFromVisualTree += (_, _) =>
@@ -41,6 +56,7 @@ public partial class HistoryView : UserControl
             _historyWorkspace.PropertyChanged += HistoryNavigationChanged;
         }
 
+        UpdateHistoryColumnDefaults();
         ScrollToHistorySelection();
     }
 
@@ -49,6 +65,31 @@ public partial class HistoryView : UserControl
         if (e.PropertyName == nameof(MainWindowViewModel.HistoryRevealRevision))
         {
             ScrollToHistorySelection();
+        }
+        else if (e.PropertyName == nameof(MainWindowViewModel.HistoryGraphWidth))
+        {
+            UpdateHistoryColumnDefaults();
+        }
+    }
+
+    private void UpdateHistoryColumnDefaults()
+    {
+        var header = this.FindControl<Grid>("HistoryColumnHeader")!;
+        if (_historyColumnsResized || header.Bounds.Width <= 0)
+        {
+            return;
+        }
+
+        _settingHistoryColumnDefaults = true;
+        try
+        {
+            var graph = _historyWorkspace?.HistoryGraphWidth ?? 84;
+            HistoryColumns[0].Width = new Avalonia.Controls.GridLength(graph, GridUnitType.Star);
+            HistoryColumns[1].Width = new Avalonia.Controls.GridLength(Math.Max(80, header.Bounds.Width - graph - 155 - 112), GridUnitType.Star);
+        }
+        finally
+        {
+            _settingHistoryColumnDefaults = false;
         }
     }
 

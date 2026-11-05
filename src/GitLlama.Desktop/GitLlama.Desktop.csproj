@@ -8,9 +8,9 @@
         <ApplicationIcon>Assets/gitllama.ico</ApplicationIcon>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="11.3.12" />
-        <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+        <PackageReference Include="Avalonia" Version="11.3.13" />
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.13" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.13" />
         <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.3.0" />
         <PackageReference Include="Dock.Avalonia" Version="11.3.12.1" />
         <PackageReference Include="Dock.Serializer.Newtonsoft" Version="11.3.12.1" />

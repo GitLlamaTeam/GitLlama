@@ -846,8 +846,17 @@ public sealed class WorkspaceTests
         CollectionUpdates.Sync(vm.WorkingFiles, rows.Select(row => row with { }), row => row.Path);
         Assert.Equal(0, updates);
         Assert.Same(retained, vm.UnstagedFiles[2500]);
+        CollectionUpdates.Sync(vm.WorkingFiles, rows.Where(row => row.Path != retained.Path), row => row.Path);
+        Assert.Equal(1, updates);
+        Assert.DoesNotContain(retained, vm.UnstagedFiles);
+        updates = 0;
+        CollectionUpdates.Sync(vm.WorkingFiles, rows, row => row.Path);
+        Assert.Equal(1, updates);
+        Assert.Same(retained, vm.UnstagedFiles[2500]);
+        updates = 0;
         CollectionUpdates.Sync(vm.WorkingFiles, rows.Take(2), row => row.Path);
         Assert.Equal(2, vm.UnstagedFiles.Count);
+        Assert.Equal(1, updates);
     }
 
     [AvaloniaTheory]
@@ -1599,6 +1608,56 @@ public sealed class WorkspaceTests
         }
 
         Assert.False(vm.AmendStagedCommit);
+    }
+
+    [AvaloniaFact]
+    public async Task DraggingHistoryDividersResizesHeadersAndCommitRowsTogether()
+    {
+        using var fixture = new WorkspaceFixture();
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        var view = new HistoryView { DataContext = vm };
+        var window = new Window { Content = view, Width = 1000, Height = 330 };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var list = view.FindControl<ListBox>("HistoryList")!;
+            var selected = vm.SelectedHistoryRow!;
+            var row = list.ContainerFromItem(selected)!;
+            var graph = row.GetVisualDescendants().OfType<GitLlama.Desktop.Controls.GraphCell>().Single();
+            var columns = ((Grid)graph.GetVisualParent()!).ColumnDefinitions;
+            void AssertAligned()
+            {
+                for (var i = 0; i < columns.Count; i++)
+                    Assert.InRange(Math.Abs(view.HistoryColumns[i].ActualWidth - columns[i].ActualWidth), 0, 1);
+            }
+
+            AssertAligned();
+            var names = new[] { "HistoryGraphDivider", "HistoryMessageDivider", "HistoryAuthorDivider" };
+            for (var i = 0; i < names.Length; i++)
+            {
+                var grip = view.FindControl<GridSplitter>(names[i])!;
+                var before = view.HistoryColumns[i].ActualWidth;
+                var start = grip.TranslatePoint(grip.Bounds.Center - grip.Bounds.Position, window)!.Value;
+                var end = start + new Vector(24, 0);
+                window.MouseMove(start);
+                window.MouseDown(start, Avalonia.Input.MouseButton.Left);
+                window.MouseMove(end);
+                window.MouseUp(end, Avalonia.Input.MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+                Assert.InRange(view.HistoryColumns[i].ActualWidth - before, 23, 25);
+                AssertAligned();
+            }
+
+            var resized = view.HistoryColumns.Select(column => column.Width).ToArray();
+            await vm.RefreshCommand.ExecuteAsync(null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(resized, view.HistoryColumns.Select(column => column.Width));
+            Assert.Same(selected, vm.SelectedHistoryRow);
+            AssertAligned();
+        }
+        finally { window.Close(); }
     }
 
     [AvaloniaFact]
@@ -2769,6 +2828,57 @@ public sealed class WorkspaceTests
             window.Close();
             Avalonia.Application.Current.DataTemplates.Remove(template);
         }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StagingOrUnstagingInTheMiddleKeepsInspectorScrollPosition(bool unstage)
+    {
+        using var fixture = new WorkspaceFixture();
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        using (var repo = new Repository(fixture.RepositoryPath))
+        {
+            Directory.CreateDirectory(Path.Combine(fixture.RepositoryPath, "Scroll"));
+            for (var i = 0; i < 120; i++)
+            {
+                var path = $"Scroll/File{i:D3}.txt";
+                File.WriteAllText(Path.Combine(fixture.RepositoryPath, path), $"file {i}\n");
+                if (i < 60) Commands.Stage(repo, path);
+            }
+        }
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.ShowWorkingTreeCommand.Execute(null);
+        var view = new InspectorView { DataContext = vm };
+        var window = new Window { Content = view, Width = 500, Height = 1100 };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var list = view.FindControl<ListBox>(unstage ? "StagedFileList" : "UnstagedFileList")!;
+            var rows = unstage ? vm.StagedFiles : vm.UnstagedFiles;
+            var selected = rows[32];
+            list.ScrollIntoView(selected);
+            Dispatcher.UIThread.RunJobs();
+            var scroll = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+            var before = scroll.Offset;
+            Assert.True(before.Y > 0);
+            Assert.True(before.Y < scroll.Extent.Height - scroll.Viewport.Height - 100);
+            var checkbox = list.ContainerFromItem(selected)!.GetVisualDescendants().OfType<CheckBox>().Single();
+            var command = unstage ? vm.UnstageSelectedCommand : vm.StageSelectedCommand;
+            var count = rows.Count;
+            checkbox.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await WaitUntilAsync(() => !command.IsRunning && rows.Count == count - 1);
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            Assert.InRange(Math.Abs(scroll.Offset.Y - before.Y), 0, 1);
+            using var repo = new Repository(fixture.RepositoryPath);
+            Assert.Equal(!unstage, repo.Index[selected.Path] is not null);
+        }
+        finally { window.Close(); }
     }
 
     [AvaloniaFact]

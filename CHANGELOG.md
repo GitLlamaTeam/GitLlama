@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.1 - 2026-11-05
+
+- Resize Graph, Message, Author, and Date columns by dragging the dividers in the history header.
+- Keep the commit inspector's scroll position when staging or unstaging files in the middle of a list. Remove rows directly instead of moving every following row, and keep single edits granular even in large lists.
+- Update Avalonia to fix overlapping rows in virtualized file lists.
+
 ## 0.4.0 - 2026-10-31
 
 - Allow checkout of a remote branch with unrelated staged, unstaged or untracked work, matching local branch checkout. Block actual overwrite conflicts and preserve local additions when checkout fails.
