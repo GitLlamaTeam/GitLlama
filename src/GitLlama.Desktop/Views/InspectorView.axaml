@@ -146,6 +146,14 @@
                                             Content="Abort merge"
                                             Click="AbortMerge_Click"
                                             IsVisible="{Binding IsMergeInProgress}" />
+                                    <Button Classes="workspace toolbar"
+                                            Content="Continue rebase"
+                                            Command="{Binding ContinuePullRebaseCommand}"
+                                            IsVisible="{Binding CanContinuePullRebase}" />
+                                    <Button Classes="workspace toolbar"
+                                            Content="Abort rebase"
+                                            Click="AbortPullRebase_Click"
+                                            IsVisible="{Binding IsPullRebaseInProgress}" />
                                 </WrapPanel>
                             </StackPanel>
                         </Border>

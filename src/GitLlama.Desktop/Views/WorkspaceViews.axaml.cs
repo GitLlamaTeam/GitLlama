@@ -284,6 +284,18 @@ public partial class InspectorView : UserControl
 
 public partial class InspectorView : UserControl
 {
+    private async void AbortPullRebase_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm && vm.SelectedRepository is { } repo
+            && TopLevel.GetTopLevel(this) is Window owner
+            && await ConfirmDialog.ShowAsync(owner, "Abort the rebase?",
+                "Return to the branch state before the rebase and discard conflict-resolution edits?",
+                "Abort rebase", "Cancel", destructive: true) && vm.SelectedRepository == repo)
+        {
+            await vm.AbortPullRebaseCommand.ExecuteAsync(null);
+        }
+    }
+
     private async void AbortMerge_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm || TopLevel.GetTopLevel(this) is not Window owner)

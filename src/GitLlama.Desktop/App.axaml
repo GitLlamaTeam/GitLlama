@@ -199,7 +199,7 @@
         </Style>
 
         <Style Selector="ListBox.history ListBoxItem">
-            <Setter Property="Height" Value="30" />
+            <Setter Property="MinHeight" Value="30" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
         </Style>

@@ -34,7 +34,16 @@ public sealed class GitLinearRebaseService
         IReadOnlyDictionary<string, string>? messages,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? edits,
         CancellationToken cancellationToken = default
-    ) =>
+    ) => RebaseAsync(repositoryPath, targetBranch, plan, messages, edits, null, cancellationToken);
+
+    public Task<string> RebaseOntoReferenceAsync(string repositoryPath, string reference, string expectedBranch,
+        CancellationToken cancellationToken = default) =>
+        RebaseAsync(repositoryPath, reference, null, null, null, expectedBranch, cancellationToken);
+
+    private Task<string> RebaseAsync(string repositoryPath, string targetBranch,
+        IReadOnlyList<GitRebaseStep>? plan, IReadOnlyDictionary<string, string>? messages,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? edits, string? expectedBranch,
+        CancellationToken cancellationToken) =>
         Task.Run(
             () =>
             {
@@ -54,23 +63,30 @@ public sealed class GitLinearRebaseService
                     );
                 }
 
-                var target =
-                    repo.Branches[targetBranch]
-                    ?? throw new ArgumentException("Target branch not found.", nameof(targetBranch));
-                if (target.IsRemote || target.Tip is null)
+                Commit target;
+                if (expectedBranch is not null)
                 {
-                    throw new InvalidOperationException("Choose a local target branch.");
+                    if (repo.Head.FriendlyName != expectedBranch)
+                        throw new InvalidOperationException("The checked-out branch changed. Review the rebase target again.");
+                    target = repo.Lookup<Commit>(targetBranch)
+                        ?? throw new InvalidOperationException("The selected rebase target no longer exists.");
                 }
-
-                if (target.FriendlyName == repo.Head.FriendlyName)
+                else
                 {
-                    throw new InvalidOperationException("Cannot rebase a branch onto itself.");
+                    var branch = repo.Branches[targetBranch];
+                    if (branch is null || branch.IsRemote || branch.Tip is null)
+                        throw new InvalidOperationException("Choose a local target branch.");
+                    if (branch.CanonicalName == repo.Head.CanonicalName)
+                        throw new InvalidOperationException("Cannot rebase a branch onto itself.");
+                    target = branch.Tip;
                 }
 
                 var source = repo.Head.Tip;
                 var baseCommit =
-                    repo.ObjectDatabase.FindMergeBase(source, target.Tip)
+                    repo.ObjectDatabase.FindMergeBase(source, target)
                     ?? throw new InvalidOperationException("Branches have no common ancestor.");
+                if (expectedBranch is not null && baseCommit.Id == target.Id)
+                    return source.Sha;
                 var commits = repo
                     .Commits.QueryBy(
                         new CommitFilter
@@ -86,9 +102,22 @@ public sealed class GitLinearRebaseService
                     throw new InvalidOperationException("This rebase supports only linear histories.");
                 }
 
-                if (commits.Length == 0)
+                if (commits.Length == 0 && expectedBranch is null)
                 {
                     throw new InvalidOperationException("There are no commits to replay.");
+                }
+
+                if (expectedBranch is not null && commits.Length > 0)
+                {
+                    var outgoing = commits.Select(commit => commit.Id).ToHashSet();
+                    var remoteTips = repo.Branches.Where(branch => branch.IsRemote && branch.Tip is not null)
+                        .Select(branch => branch.Tip).ToArray();
+                    if (remoteTips.Length > 0 && repo.Commits.QueryBy(new CommitFilter
+                    {
+                        IncludeReachableFrom = remoteTips,
+                        ExcludeReachableFrom = baseCommit
+                    }).Any(commit => outgoing.Contains(commit.Id)))
+                        throw new InvalidOperationException("The rebase would rewrite commits in remote-tracking history.");
                 }
 
                 if (plan is not null)
@@ -147,11 +176,11 @@ public sealed class GitLinearRebaseService
                 var originalBranch = repo.Head.FriendlyName;
                 var originalCommitId = source.Id;
                 var originalMoved = false;
-                var temporary = repo.CreateBranch(tempName, target.Tip);
+                var temporary = repo.CreateBranch(tempName, target);
                 var completed = false;
                 try
                 {
-                    Commands.Checkout(repo, temporary);
+                    GitCheckoutTransaction.Checkout(repo, temporary, cancellationToken);
                     foreach (var commit in commits)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -230,7 +259,7 @@ public sealed class GitLinearRebaseService
                         {
                             var tip = repo.Head.Tip!;
                             var previous = tip.Parents.Single();
-                            if (previous.Id == target.Tip.Id)
+                            if (previous.Id == target.Id)
                             {
                                 throw new InvalidOperationException("Cannot squash or fixup into the target branch.");
                             }

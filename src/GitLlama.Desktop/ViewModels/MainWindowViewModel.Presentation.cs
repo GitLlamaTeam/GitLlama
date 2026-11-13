@@ -19,7 +19,9 @@ public partial class MainWindowViewModel
     public bool HasSelectedWorkingFile => SelectedWorkingFile is not null;
     public bool HasSelectedHistoryFile => SelectedHistoryFileRow is not null;
     public string WorkingChangesCaption =>
-        HasMergeConflicts ? $"Merge conflicts ({ConflictedFileCount}) · Resolve"
+        IsPullRebaseInProgress ? HasMergeConflicts ? $"Rebase conflicts ({ConflictedFileCount}) · Resolve"
+            : "Rebase ready to continue · View changes"
+        : HasMergeConflicts ? $"Merge conflicts ({ConflictedFileCount}) · Resolve"
         : IsMergeInProgress ? "Merge ready to finish · View changes"
         : ChangeCount == 0 ? "Working directory is clean"
         : $"{ChangeCount} working changes · View changes";

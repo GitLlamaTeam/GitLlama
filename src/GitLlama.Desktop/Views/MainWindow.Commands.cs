@@ -3,12 +3,19 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using GitLlama.Desktop.Controls;
 using GitLlama.Desktop.ViewModels;
 
 namespace GitLlama.Desktop.Views;
 
 public partial class MainWindow
 {
+    private void PullOptions_ContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (sender is Control control)
+            e.Handled = PullOptionsButton.OpenOptions(control);
+    }
+
     private void CommandPalette_Click(object? sender, RoutedEventArgs e) => ShowCommandPalette();
 
     private void ShowCommandPalette()
@@ -31,7 +38,7 @@ public partial class MainWindow
             ["Commit staged changes"] = () =>
                 vm.CommitCommand.CanExecute(null) ? vm.CommitCommand.ExecuteAsync(null) : Task.CompletedTask,
             ["Fetch selected remote"] = () => vm.FetchRemoteCommand.ExecuteAsync(null),
-            ["Pull tracked branch"] = () => vm.PullFastForwardCommand.ExecuteAsync(null),
+            ["Pull tracked branch"] = () => vm.PullCommand.ExecuteAsync(null),
             ["Push current branch"] = () => vm.PushRemoteCommand.ExecuteAsync(null),
             ["Reset workspace layout"] = () =>
             {

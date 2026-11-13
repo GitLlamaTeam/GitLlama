@@ -232,7 +232,7 @@
 
                                 <MenuItem Header="_Remote">
                                     <MenuItem Header="Fetch" Command="{Binding FetchRemoteCommand}" />
-                                    <MenuItem Header="Pull (fast-forward only)" Command="{Binding PullFastForwardCommand}" />
+                                    <MenuItem Header="Pull" Command="{Binding PullCommand}" />
                                     <MenuItem Header="Push" Command="{Binding PushRemoteCommand}" />
 
                                     <MenuItem Header="Manage remotes"
@@ -448,14 +448,16 @@
                                         Command="{Binding FetchUpstreamCommand}"
                                         ToolTip.Tip="{Binding FetchToolTip}" />
 
-                                <Grid>
+                                <Grid ColumnDefinitions="*,20">
                                 <Button x:Name="PullButton"
                                         Classes="workspace repository-action"
                                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                         Content="↓  Pull"
-                                        Command="{Binding PullFastForwardCommand}"
+                                        Command="{Binding PullCommand}"
+                                        ContextRequested="PullOptions_ContextRequested"
                                         ToolTip.Tip="{Binding PullToolTip}" />
-                                    <Canvas IsHitTestVisible="False">
+                                    <controls:PullOptionsButton Grid.Column="1" />
+                                    <Canvas Grid.ColumnSpan="2" IsHitTestVisible="False">
                                         <Border Classes="sync-count" Canvas.Right="-4" Canvas.Top="-6" IsVisible="{Binding HasPullCommits}">
                                             <TextBlock Text="{Binding PullCommitCount}" />
                                         </Border>

@@ -21,10 +21,15 @@ public partial class MainWindowViewModel
     public int ConflictedFileCount => WorkingFiles.Count(file => file.Status == "Conflict");
     public bool HasMergeConflicts => ConflictedFileCount > 0;
     public bool IsMergeInProgress => RepositoryOperation == "Merge";
-    public bool ShowMergeBanner => IsMergeInProgress || HasMergeConflicts;
+    public bool IsPullRebaseInProgress => RepositoryOperation is "RebaseMerge" or "RebaseInteractive";
+    public bool CanContinuePullRebase => IsPullRebaseInProgress && !HasMergeConflicts;
+    public bool ShowMergeBanner => IsMergeInProgress || IsPullRebaseInProgress || HasMergeConflicts;
     public bool CanFinishMerge => IsMergeInProgress && !HasMergeConflicts;
     public string MergeBannerText =>
-        HasMergeConflicts
+        IsPullRebaseInProgress
+            ? HasMergeConflicts ? "The rebase stopped on conflicts. Resolve and stage the files, then continue the rebase."
+                : "The conflicts are resolved. Continue the rebase to replay the remaining commits."
+        : HasMergeConflicts
             ? (
                 ConflictedFileCount == 1
                     ? "The merge stopped on 1 conflicted file. Resolve it, then finish the merge."
@@ -51,7 +56,8 @@ public partial class MainWindowViewModel
     /// <summary>The working changes inspector lists conflicted and resolved files while a merge is in progress.</summary>
     public bool IsConflictInspector => ShowMergeBanner;
     public bool IsCommitInspector => !ShowMergeBanner;
-    public string WorkingInspectorTitle => ShowMergeBanner ? "Merge in progress" : "Commit changes";
+    public string WorkingInspectorTitle => IsPullRebaseInProgress ? "Rebase in progress"
+        : ShowMergeBanner ? "Merge in progress" : "Commit changes";
 
     partial void OnRepositoryOperationChanged(string value) => NotifyMergeState();
 
@@ -96,6 +102,8 @@ public partial class MainWindowViewModel
         OnPropertyChanged(nameof(ConflictedFileCount));
         OnPropertyChanged(nameof(HasMergeConflicts));
         OnPropertyChanged(nameof(IsMergeInProgress));
+        OnPropertyChanged(nameof(IsPullRebaseInProgress));
+        OnPropertyChanged(nameof(CanContinuePullRebase));
         OnPropertyChanged(nameof(ShowMergeBanner));
         OnPropertyChanged(nameof(CanFinishMerge));
         OnPropertyChanged(nameof(MergeBannerText));
@@ -240,7 +248,8 @@ public partial class MainWindowViewModel
         else
         {
             IsConflictResolver = false;
-            Status = "All conflicts are resolved. Finish the merge to commit it.";
+            Status = IsPullRebaseInProgress ? "All conflicts are resolved. Continue the rebase."
+                : "All conflicts are resolved. Finish the merge to commit it.";
         }
     }
 }

@@ -58,7 +58,7 @@ public partial class MainWindowViewModel
             : "Choose where to push with the upstream picker";
 
     public string PullToolTip =>
-        Upstream is { Published: true } upstream ? $"Pull {upstream.Name} into {CurrentBranch} (fast-forward only)"
+        Upstream is { Published: true } upstream ? $"Pull {upstream.Name} into {CurrentBranch} ({PullModeCaption})"
         : Upstream is { } pending ? $"{pending.Name} isn't on the server yet, so there's nothing to pull"
         : "Choose an upstream to pull from with the upstream picker";
 

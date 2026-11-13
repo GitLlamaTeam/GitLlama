@@ -1151,6 +1151,8 @@ public partial class MainWindowViewModel : ObservableObject
             SelectedLayout = LayoutNames.Contains(data.LayoutName) ? data.LayoutName : "Standard";
             AutoRefresh = data.AutoRefresh;
             LoadAvatars = data.LoadAvatars;
+            PullMode = Enum.TryParse<GitPullMode>(data.PullMode, out var pullMode) && Enum.IsDefined(pullMode)
+                ? pullMode : GitPullMode.Merge;
             InitializeProfiles(data);
             SelectedRepository = Repositories.FirstOrDefault(r => r.Path == data.ActiveRepository);
             if (data.OpenRepositoryPaths is { Count: > 0 } paths)
@@ -1435,7 +1437,8 @@ public partial class MainWindowViewModel : ObservableObject
                 SshPublicKeyPath: SshPublicKeyPath,
                 Profiles: Profiles.ToList(),
                 ActiveProfileId: ActiveProfile?.Id,
-                LoadAvatars: LoadAvatars
+                LoadAvatars: LoadAvatars,
+                PullMode: PullMode.ToString()
             );
             await _settings.SaveAsync(snapshot);
         }
@@ -2174,7 +2177,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand(IncludeCancelCommand = true)]
-    private async Task PullFastForwardAsync(CancellationToken cancellationToken)
+    private async Task PullAsync(CancellationToken cancellationToken)
     {
         if (SelectedRepository is not { } repo)
         {
@@ -2198,9 +2201,10 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            Status = "Pulling tracked branch (fast-forward only)...";
+            Status = "Pulling tracked branch...";
             IsNetworkBusy = true;
-            await _remotes.PullFastForwardAsync(repo.Path, cancellationToken, NetworkOptions(version));
+            var mode = PullMode;
+            var result = await _remotes.PullAsync(repo.Path, PullCommitter(), cancellationToken, NetworkOptions(version), mode);
             if (version != Interlocked.Read(ref _repositorySelectionVersion))
             {
                 return;
@@ -2208,7 +2212,18 @@ public partial class MainWindowViewModel : ObservableObject
 
             MarkLfsLocksStale();
             await RefreshAsync();
-            Status = "Pull complete";
+            if (version != Interlocked.Read(ref _repositorySelectionVersion)) return;
+            if (result == LibGit2Sharp.MergeStatus.Conflicts)
+            {
+                ShowWorkingTree();
+                Status = mode == GitPullMode.Rebase
+                    ? "Pull stopped with rebase conflicts. Resolve the files, then continue the rebase."
+                    : "Pull stopped with merge conflicts. Resolve the files, then finish the merge.";
+            }
+            else
+            {
+                Status = result == LibGit2Sharp.MergeStatus.UpToDate ? "Already up to date" : "Pull complete";
+            }
         }
         catch (Exception e)
         {

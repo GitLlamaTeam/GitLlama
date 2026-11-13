@@ -4,6 +4,8 @@ namespace GitLlama.Git;
 
 public sealed record GitRemoteInfo(string Name, string Url, string PushUrl);
 
+public enum GitPullMode { Merge, FastForwardOnly, Rebase }
+
 public sealed record GitRemoteBranchInfo(
     string RemoteName,
     string BranchName,
@@ -328,6 +330,24 @@ public sealed partial class GitRemoteService
         string repositoryPath,
         CancellationToken cancellationToken = default,
         GitNetworkOptions? network = null
+    ) => PullCoreAsync(repositoryPath, new Signature("GitLlama", "gitllama@localhost", DateTimeOffset.UtcNow),
+        GitPullMode.FastForwardOnly, cancellationToken, network);
+
+    /// <summary>Fetches the tracked upstream and merges it into the current branch, exposing conflicts for resolution.</summary>
+    public Task<MergeStatus> PullAsync(
+        string repositoryPath,
+        Signature merger,
+        CancellationToken cancellationToken = default,
+        GitNetworkOptions? network = null,
+        GitPullMode mode = GitPullMode.Merge
+    ) => PullCoreAsync(repositoryPath, merger, mode, cancellationToken, network);
+
+    private Task<MergeStatus> PullCoreAsync(
+        string repositoryPath,
+        Signature merger,
+        GitPullMode mode,
+        CancellationToken cancellationToken,
+        GitNetworkOptions? network
     ) =>
         Task.Run(
             () =>
@@ -335,6 +355,7 @@ public sealed partial class GitRemoteService
                 using var transport = GitTransportScope.Enter(network, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 ArgumentException.ThrowIfNullOrWhiteSpace(repositoryPath);
+                if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
                 using var repository = new Repository(repositoryPath);
                 if (repository.Info.IsBare || repository.Info.IsHeadDetached || repository.Head.Tip is null)
                 {
@@ -346,29 +367,85 @@ public sealed partial class GitRemoteService
                     throw new InvalidOperationException("Set an upstream tracking branch before pulling.");
                 }
 
-                if (repository.RetrieveStatus().IsDirty)
+                if (repository.Info.CurrentOperation != CurrentOperation.None)
                 {
-                    throw new InvalidOperationException("Commit or stash local changes before pulling.");
+                    throw new InvalidOperationException("Complete the current Git operation before pulling.");
                 }
 
-                var upstreamRemote = repository.Network.Remotes[repository.Head.RemoteName];
-                if (upstreamRemote is not null)
+                using (GitLfsFilter.ReadOnly(repository))
                 {
-                    network?.EnsureAzureAccess(upstreamRemote.Url);
+                    if (repository.RetrieveStatus().IsDirty)
+                    {
+                        throw new InvalidOperationException("Commit or stash local changes before pulling.");
+                    }
                 }
 
-                var signature = new Signature("GitLlama", "gitllama@localhost", DateTimeOffset.UtcNow);
+                var upstreamRemote = repository.Network.Remotes[repository.Head.RemoteName]
+                    ?? throw new InvalidOperationException("The configured upstream remote is missing.");
+                network?.EnsureAzureAccess(upstreamRemote.Url);
+
+                if (mode == GitPullMode.Rebase)
+                {
+                    Commands.Fetch(repository, repository.Head.RemoteName,
+                        upstreamRemote.FetchRefSpecs.Select(spec => spec.Specification),
+                        (network ?? new GitNetworkOptions()).Fetch(cancellationToken), null);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var head = repository.Head;
+                    var upstream = head.TrackedBranch;
+                    if (upstream?.Tip is null) throw new InvalidOperationException("The upstream branch was not found after fetching.");
+                    var common = repository.ObjectDatabase.FindMergeBase(head.Tip, upstream.Tip)
+                        ?? throw new InvalidOperationException("The local branch and upstream have no common history.");
+                    if (common.Id == upstream.Tip.Id) return MergeStatus.UpToDate;
+                    if (common.Id == head.Tip.Id)
+                        return repository.Merge(upstream, merger,
+                            new MergeOptions { FastForwardStrategy = FastForwardStrategy.FastForwardOnly }).Status;
+                    var rebase = repository.Rebase.Start(head, upstream, upstream,
+                        new Identity(merger.Name, merger.Email), new RebaseOptions());
+                    return rebase.Status == RebaseStatus.Conflicts ? MergeStatus.Conflicts : MergeStatus.NonFastForward;
+                }
+
                 var options = new PullOptions
                 {
                     FetchOptions = (network ?? new GitNetworkOptions()).Fetch(cancellationToken),
-                    MergeOptions = new MergeOptions { FastForwardStrategy = FastForwardStrategy.FastForwardOnly },
+                    MergeOptions = new MergeOptions { FastForwardStrategy = mode == GitPullMode.FastForwardOnly
+                        ? FastForwardStrategy.FastForwardOnly : FastForwardStrategy.Default },
                 };
                 cancellationToken.ThrowIfCancellationRequested();
-                Commands.Pull(repository, signature, options);
+                MergeResult result;
+                try
+                {
+                    result = Commands.Pull(repository, merger, options);
+                }
+                catch (NonFastForwardException error) when (mode == GitPullMode.FastForwardOnly)
+                {
+                    throw new InvalidOperationException("The local branch and upstream have diverged. Choose “fast-forward if possible” or “rebase” from the Pull options.", error);
+                }
                 cancellationToken.ThrowIfCancellationRequested();
+                return result.Status;
             },
             cancellationToken
         );
+
+    public Task<RebaseStatus> ContinuePullRebaseAsync(string path, Signature committer) => Task.Run(() =>
+    {
+        using var repo = new Repository(path);
+        RequirePullRebase(repo);
+        if (repo.Index.Conflicts.Any()) throw new InvalidOperationException("Resolve and stage conflicts before continuing the rebase.");
+        return repo.Rebase.Continue(new Identity(committer.Name, committer.Email), new RebaseOptions()).Status;
+    });
+
+    public Task AbortPullRebaseAsync(string path) => Task.Run(() =>
+    {
+        using var repo = new Repository(path);
+        RequirePullRebase(repo);
+        repo.Rebase.Abort();
+    });
+
+    private static void RequirePullRebase(Repository repo)
+    {
+        if (repo.Info.CurrentOperation is not (CurrentOperation.RebaseMerge or CurrentOperation.RebaseInteractive))
+            throw new InvalidOperationException("There is no merge-based rebase to continue or abort.");
+    }
 
     /// <summary>Configures the checked-out branch to track an existing remote-tracking branch.</summary>
     public Task SetCurrentBranchUpstreamAsync(

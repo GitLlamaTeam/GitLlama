@@ -514,14 +514,13 @@ public partial class NavigationView
         await vm.DropSelectedStashCommand.ExecuteAsync(null);
     }
 
-    internal ContextMenu BuildBranchMenu(string branch)
+    internal ContextMenu BuildBranchMenu(string branch, bool remote = false)
     {
         if (DataContext is not MainWindowViewModel vm)
         {
             return new ContextMenu();
         }
 
-        var remote = vm.Remotes.Any(r => branch.StartsWith(r.Name + "/", StringComparison.Ordinal));
         var items = new List<MenuItem>();
         void Add(string label, Func<Task> action, bool enabled = true)
         {
@@ -540,6 +539,10 @@ public partial class NavigationView
             branch != vm.CurrentBranch && !branch.EndsWith("/HEAD", StringComparison.Ordinal)
         );
         Add("Merge into " + vm.CurrentBranch + "…", () => MergeBranchAsync(branch), branch != vm.CurrentBranch);
+        var reference = (remote ? "refs/remotes/" : "refs/heads/") + branch;
+        items.Add(RebaseMenuItem.Create(vm, reference, branch, remote
+            ? !branch.EndsWith("/HEAD", StringComparison.Ordinal)
+            : branch != vm.CurrentBranch));
         Add("Create branch here…", () => CreateBranchAtAsync(branch));
         Add(
             "Create worktree here…",
@@ -576,16 +579,6 @@ public partial class NavigationView
                         _ => { },
                         vm.DeleteBranchCommand
                     ),
-                branch != vm.CurrentBranch
-            );
-            Add(
-                "Rebase current branch onto this…",
-                () =>
-                {
-                    vm.RebaseTargetBranch = branch;
-                    (TopLevel.GetTopLevel(this) as MainWindow)?.ShowDocument("Branches");
-                    return Task.CompletedTask;
-                },
                 branch != vm.CurrentBranch
             );
         }

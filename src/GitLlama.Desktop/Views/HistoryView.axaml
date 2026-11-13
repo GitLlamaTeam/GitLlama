@@ -106,7 +106,7 @@
                     <Border BorderBrush="#2D2D30"
                             BorderThickness="0,0,0,1"
                             ToolTip.Tip="{Binding Sha}">
-                        <Grid Height="30" ClipToBounds="True">
+                        <Grid ClipToBounds="True">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition MinWidth="48" Width="{Binding $parent[views:HistoryView].HistoryColumns[0].Width}" />
                                 <ColumnDefinition MinWidth="80" Width="{Binding $parent[views:HistoryView].HistoryColumns[1].Width}" />
@@ -117,11 +117,11 @@
                             <DockPanel Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center" ClipToBounds="True">
                                 <ItemsControl DockPanel.Dock="Right"
                                               ItemsSource="{Binding ReferenceLabels}"
-                                              Margin="6,0,0,0"
+                                              Margin="6,4,0,4"
                                               MaxWidth="200">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" Spacing="4" />
+                                            <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
 

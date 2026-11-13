@@ -1059,9 +1059,10 @@ public sealed class DockContentTemplate(MainWindowViewModel workspace) : IDataTe
                 var pushRemote = new Button { Content = "Push current branch (no force)" };
                 pushRemote.Bind(Button.CommandProperty, new Binding(nameof(workspace.PushRemoteCommand)));
                 root.Children.Add(pushRemote);
-                var pullRemote = new Button { Content = "Pull tracked branch (fast-forward only)" };
-                pullRemote.Bind(Button.CommandProperty, new Binding(nameof(workspace.PullFastForwardCommand)));
+                var pullRemote = new Button { Content = "Pull tracked branch" };
+                pullRemote.Bind(Button.CommandProperty, new Binding(nameof(workspace.PullCommand)));
                 root.Children.Add(pullRemote);
+                root.Children.Add(new GitLlama.Desktop.Controls.PullOptionsButton());
                 root.Children.Add(
                     new TextBlock
                     {

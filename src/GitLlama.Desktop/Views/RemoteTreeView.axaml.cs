@@ -108,7 +108,7 @@ public partial class RemoteTreeView : UserControl
             && this.GetVisualAncestors().OfType<NavigationView>().FirstOrDefault() is { } navigation
         )
         {
-            items.AddRange(navigation.BuildBranchMenu(branch).ItemsSource!.OfType<MenuItem>());
+            items.AddRange(navigation.BuildBranchMenu(branch, remote: true).ItemsSource!.OfType<MenuItem>());
             hasNavigationMenu = true;
         }
 
@@ -150,6 +150,8 @@ public partial class RemoteTreeView : UserControl
             if (!hasNavigationMenu)
             {
                 Add("Checkout " + reference + "…", () => CheckoutAsync(reference));
+                items.Add(RebaseMenuItem.Create(vm, "refs/remotes/" + reference, reference,
+                    !reference.EndsWith("/HEAD", StringComparison.Ordinal)));
                 Add("Show branch history", () => vm.RevealBranchHistoryCommand.ExecuteAsync(reference));
                 Add("Copy branch name", () => CopyAsync(reference));
             }

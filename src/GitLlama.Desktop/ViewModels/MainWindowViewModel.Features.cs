@@ -329,7 +329,7 @@ public partial class MainWindowViewModel
     {
         FetchRemoteCommand.Cancel();
         PushRemoteCommand.Cancel();
-        PullFastForwardCommand.Cancel();
+        PullCommand.Cancel();
         CloneRepositoryCommand.Cancel();
         PushSelectedTagCommand.Cancel();
         DeleteSelectedRemoteTagCommand.Cancel();

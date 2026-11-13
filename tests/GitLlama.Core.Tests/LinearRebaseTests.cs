@@ -6,8 +6,12 @@ namespace GitLlama.Core.Tests;
 
 public sealed class LinearRebaseTests
 {
-    [Fact]
-    public async Task RebaseReplaysLinearCommitsAndKeepsTarget()
+    [Theory]
+    [InlineData("local")]
+    [InlineData("remote")]
+    [InlineData("commit")]
+    [InlineData("published")]
+    public async Task RebaseReplaysLinearCommitsAndKeepsTarget(string targetKind)
     {
         var path = Path.Combine(Path.GetTempPath(), "gitllama-rebase-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
@@ -33,15 +37,32 @@ public sealed class LinearRebaseTests
                 Commands.Stage(repo, "target.txt");
                 targetOriginal = repo.Commit("target", sig, sig).Sha;
                 Commands.Checkout(repo, repo.Branches[sourceName]);
+                repo.Refs.Add("refs/remotes/origin/target", new ObjectId(targetOriginal));
+                if (targetKind == "published")
+                    repo.Refs.Add("refs/remotes/origin/source", new ObjectId(sourceOriginal));
             }
 
-            var rewritten = await new GitLinearRebaseService().RebaseOntoAsync(path, "target");
+            var service = new GitLinearRebaseService();
+            if (targetKind == "published")
+            {
+                var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    service.RebaseOntoReferenceAsync(path, "refs/remotes/origin/target", sourceName));
+                Assert.Contains("remote-tracking history", error.Message);
+                using var original = new Repository(path);
+                Assert.Equal(sourceOriginal, original.Head.Tip.Sha);
+                return;
+            }
+            var rewritten = targetKind == "local"
+                ? await service.RebaseOntoAsync(path, "target")
+                : await service.RebaseOntoReferenceAsync(path,
+                    targetKind == "remote" ? "refs/remotes/origin/target" : targetOriginal, sourceName);
             using var check = new Repository(path);
             Assert.Equal(sourceName, check.Head.FriendlyName);
             Assert.Equal(rewritten, check.Head.Tip.Sha);
             Assert.NotEqual(sourceOriginal, rewritten);
             Assert.Equal(targetOriginal, check.Head.Tip.Parents.Single().Sha);
             Assert.Equal(targetOriginal, check.Branches["target"].Tip.Sha);
+            Assert.Equal(targetOriginal, check.Branches["origin/target"].Tip.Sha);
             Assert.True(File.Exists(Path.Combine(path, "source.txt")));
             Assert.True(File.Exists(Path.Combine(path, "target.txt")));
         }

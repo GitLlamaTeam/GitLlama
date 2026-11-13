@@ -1336,6 +1336,72 @@ public sealed class WorkspaceTests
         Assert.Contains("deleted file", await vm.FilePatchAsync("src/Auth.cs", staged: false));
     }
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PullCommandIntegratesDivergedUpstreamOrOpensRebaseConflicts(bool rebase)
+    {
+        using var fixture = new WorkspaceFixture();
+        var remotePath = Path.Combine(Path.GetDirectoryName(fixture.RepositoryPath)!, "pull-source");
+        var author = new Signature("Setup", "setup@example.invalid", DateTimeOffset.Now);
+        string common;
+        using (var local = new Repository(fixture.RepositoryPath))
+        {
+            Commands.Stage(local, "*");
+            common = local.Commit("Common history", author, author).Sha;
+        }
+        Repository.Clone(fixture.RepositoryPath, remotePath);
+        string remoteSha;
+        using (var remote = new Repository(remotePath))
+        {
+            var file = rebase ? "README.md" : "remote.txt";
+            File.WriteAllText(Path.Combine(remotePath, file), "remote work");
+            Commands.Stage(remote, file);
+            remoteSha = remote.Commit("Remote work", author, author).Sha;
+        }
+        string localSha;
+        using (var local = new Repository(fixture.RepositoryPath))
+        {
+            local.Network.Remotes.Add("origin", remotePath);
+            var upstream = $"refs/remotes/origin/{local.Head.FriendlyName}";
+            local.Refs.Add(upstream, local.Lookup<Commit>(common).Id);
+            local.Branches.Update(local.Head, branch => branch.TrackedBranch = upstream);
+            var file = rebase ? "README.md" : "local.txt";
+            File.WriteAllText(Path.Combine(fixture.RepositoryPath, file), "local work");
+            Commands.Stage(local, file);
+            localSha = local.Commit("Local work", author, author).Sha;
+        }
+
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        Assert.Equal(GitPullMode.Merge, vm.PullMode);
+        if (rebase)
+        {
+            var choice = GitLlama.Desktop.Controls.PullOptionsButton.Items(vm)[2];
+            choice.Command!.Execute(choice.CommandParameter);
+        }
+        await vm.PullCommand.ExecuteAsync(null);
+        if (rebase)
+        {
+            Assert.Contains("rebase conflicts", vm.Status);
+            Assert.True(vm.IsPullRebaseInProgress);
+            Assert.True(vm.IsWorkingTreeInspector);
+            Assert.Equal("README.md", Assert.Single(vm.ConflictedFiles).Path);
+            Assert.False(vm.CanContinuePullRebase);
+            await vm.AbortPullRebaseCommand.ExecuteAsync(null);
+            Assert.False(vm.IsPullRebaseInProgress);
+            using var restored = new Repository(fixture.RepositoryPath);
+            Assert.Equal(localSha, restored.Head.Tip.Sha);
+            return;
+        }
+        Assert.Equal("Pull complete", vm.Status);
+        using var result = new Repository(fixture.RepositoryPath);
+        Assert.Equal(new[] { localSha, remoteSha }, result.Head.Tip.Parents.Select(parent => parent.Sha));
+        Assert.Equal(vm.AuthorEmail, result.Head.Tip.Committer.Email);
+        Assert.True(File.Exists(Path.Combine(fixture.RepositoryPath, "local.txt")));
+        Assert.True(File.Exists(Path.Combine(fixture.RepositoryPath, "remote.txt")));
+    }
+
     [AvaloniaFact]
     public async Task ToolbarShowsAndChangesWhereTheBranchPushesAndPulls()
     {
@@ -1359,14 +1425,19 @@ public sealed class WorkspaceTests
         await vm.PushToUpstreamCommand.ExecuteAsync(null);
         Assert.Equal($"origin/{branch}", vm.UpstreamCaption);
         Assert.True(vm.Upstream!.Published);
-        Assert.Equal($"Pull origin/{branch} into {branch} (fast-forward only)", vm.PullToolTip);
+        Assert.Equal($"Pull origin/{branch} into {branch} (fast-forward if possible)", vm.PullToolTip);
+        var pullModes = GitLlama.Desktop.Controls.PullOptionsButton.Items(vm);
+        Assert.True(pullModes[0].IsChecked);
+        pullModes[1].Command!.Execute(pullModes[1].CommandParameter);
+        Assert.Equal(GitPullMode.FastForwardOnly, vm.PullMode);
+        Assert.EndsWith("(fast-forward only)", vm.PullToolTip);
 
         // Choosing a branch that isn't on the server yet: Pull explains, Push creates it.
         await vm.SetUpstreamToAsync("origin", "shared/work");
         Assert.Equal("origin/shared/work", vm.UpstreamCaption);
         Assert.Equal("new", vm.UpstreamCounts);
         Assert.Equal($"Push {branch} to origin/shared/work", vm.PushToolTip);
-        await vm.PullFastForwardCommand.ExecuteAsync(null);
+        await vm.PullCommand.ExecuteAsync(null);
         Assert.Contains("isn't on the server yet", vm.Status);
         await vm.PushToUpstreamCommand.ExecuteAsync(null);
         using (var bare = new Repository(server))
@@ -1611,6 +1682,58 @@ public sealed class WorkspaceTests
     }
 
     [AvaloniaFact]
+    public async Task HistoryBranchLabelsWrapAndGrowRowsWithoutClipping()
+    {
+        using var fixture = new WorkspaceFixture();
+        var vm = await fixture.OpenAsync();
+        vm.AutoRefresh = false;
+        using (var repo = new Repository(fixture.RepositoryPath))
+        {
+            for (var i = 0; i < 12; i++) repo.CreateBranch($"topic{i:D2}");
+        }
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var commit = vm.HistoryRows.First(row => row.Labels.Count >= 12);
+        vm.SelectedHistoryRow = commit;
+        var view = new HistoryView { DataContext = vm };
+        var window = new Window { Content = view, Width = 1000, Height = 700 };
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var list = view.FindControl<ListBox>("HistoryList")!;
+            list.ScrollIntoView(commit);
+            Dispatcher.UIThread.RunJobs();
+            var row = list.ContainerFromItem(commit)!;
+            void AssertLabelsVisible()
+            {
+                var labels = row.GetVisualDescendants().OfType<Border>()
+                    .Where(border => border.DataContext is HistoryReferenceLabel).ToArray();
+                Assert.Equal(commit.Labels.Count, labels.Length);
+                var positions = labels.Select(label => label.TranslatePoint(default, row)!.Value).ToArray();
+                Assert.True(positions.Select(point => point.Y).Distinct().Count() > 1);
+                for (var i = 0; i < labels.Length; i++)
+                {
+                    Assert.InRange(positions[i].Y, 0, row.Bounds.Height - labels[i].Bounds.Height);
+                    Assert.InRange(positions[i].X, 0, row.Bounds.Width - labels[i].Bounds.Width);
+                }
+                var graph = row.GetVisualDescendants().OfType<GitLlama.Desktop.Controls.GraphCell>().Single();
+                Assert.InRange(row.Bounds.Height - graph.Bounds.Height, 0, 2);
+                var next = list.ContainerFromIndex(list.IndexFromContainer(row) + 1);
+                if (next is not null) Assert.True(next.Bounds.Y >= row.Bounds.Bottom);
+            }
+
+            Assert.True(row.Bounds.Height > 30);
+            AssertLabelsVisible();
+            var height = row.Bounds.Height;
+            view.HistoryColumns[1].Width = new GridLength(140);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(row.Bounds.Height > height);
+            AssertLabelsVisible();
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public async Task DraggingHistoryDividersResizesHeadersAndCommitRowsTogether()
     {
         using var fixture = new WorkspaceFixture();
@@ -1679,11 +1802,14 @@ public sealed class WorkspaceTests
             Dispatcher.UIThread.RunJobs();
             var row = list.ContainerFromItem(selected)!;
             Assert.NotNull(row);
-            var point = row.TranslatePoint(new Point(100, row.Bounds.Height / 2), window)!.Value;
+            var scroll = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+            // ScrollIntoView can leave part of a variable-height row outside the viewport.
+            var visible = new Rect(row.TranslatePoint(default, window)!.Value, row.Bounds.Size)
+                .Intersect(new Rect(scroll.TranslatePoint(default, window)!.Value, scroll.Bounds.Size));
+            var point = new Point(visible.X + Math.Min(100, visible.Width / 2), visible.Y + Math.Min(3, visible.Height / 2));
             window.MouseMove(point);
             Dispatcher.UIThread.RunJobs();
             Assert.True(row.IsPointerOver);
-            var scroll = list.GetVisualDescendants().OfType<ScrollViewer>().First();
             var offset = scroll.Offset;
             Assert.True(offset.Y > 0);
             var notifications = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
@@ -1906,6 +2032,7 @@ public sealed class WorkspaceTests
             .Select(item => item.Header!.ToString())
             .ToArray();
         Assert.Contains("Checkout context-branch", labels);
+        Assert.Contains($"Rebase {current} onto context-branch…", labels);
         Assert.Contains("Rename branch…", labels);
         Assert.Contains("Delete merged branch…", labels);
         Assert.Contains("Show branch history", labels);

@@ -99,6 +99,7 @@ public partial class HistoryView
                 )
         );
         Add("Reset branch (soft)…", () => vm.SoftResetToSelectedCommitCommand.ExecuteAsync(null));
+        items.Add(RebaseMenuItem.Create(vm, selected.Sha, selected.ShortSha));
         Add("Reset branch (mixed)…", () => vm.MixedResetToSelectedCommitCommand.ExecuteAsync(null));
         Add("Reset branch (hard)…", () => vm.HardResetToSelectedCommitCommand.ExecuteAsync(null));
         list.ContextMenu = new ContextMenu { ItemsSource = items };

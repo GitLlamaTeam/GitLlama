@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.2 - 2026-11-13
+
+- Choose how Pull integrates upstream commits: fast-forward if possible, fast-forward only, or rebase. Pull opens the conflict inspector when resolution is needed and remembers the selected mode.
+- Rebase the current branch onto a local branch, remote branch, or commit from its context menu.
+- Wrap branch labels in the history graph and expand rows to fit them.
+
 ## 0.4.1 - 2026-11-05
 
 - Resize Graph, Message, Author, and Date columns by dragging the dividers in the history header.
